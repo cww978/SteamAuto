@@ -1,0 +1,187 @@
+use regex::Regex;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SteamStoreDetails {
+    pub appid: u32,
+    pub name: String,
+    pub short_description: String,
+    pub header_image: String,
+    pub capsule_image: String,
+    pub background: String,
+    pub developers: Vec<String>,
+    pub publishers: Vec<String>,
+    pub dlcs: Vec<u32>,
+    pub genres: Vec<String>,
+    pub release_date: String,
+    pub generated_lua: String,
+}
+
+pub fn extract_appid_from_input(input: &str) -> Option<u32> {
+    let trimmed = input.trim();
+    if let Ok(id) = trimmed.parse::<u32>() {
+        return Some(id);
+    }
+
+    // Match steam store url: https://store.steampowered.com/app/1245620/...
+    let re = Regex::new(r"store\.steampowered\.com/app/(\d+)").unwrap();
+    if let Some(caps) = re.captures(trimmed) {
+        if let Ok(id) = caps[1].parse::<u32>() {
+            return Some(id);
+        }
+    }
+
+    // Match steam://rungameid/1245620
+    let re_run = Regex::new(r"steam://(?:rungameid|app|launch)/(\d+)").unwrap();
+    if let Some(caps) = re_run.captures(trimmed) {
+        if let Ok(id) = caps[1].parse::<u32>() {
+            return Some(id);
+        }
+    }
+
+    // Match general digits in string
+    let re_digits = Regex::new(r"\b(\d{4,8})\b").unwrap();
+    if let Some(caps) = re_digits.captures(trimmed) {
+        if let Ok(id) = caps[1].parse::<u32>() {
+            return Some(id);
+        }
+    }
+
+    None
+}
+
+pub async fn fetch_steam_app_details(appid: u32) -> Result<SteamStoreDetails, String> {
+    let endpoints = [
+        format!("https://store.steampowered.com/api/appdetails?appids={}&cc=cn&l=schinese", appid),
+        format!("https://store.steampowered.com/api/appdetails?appids={}&l=schinese", appid),
+        format!("https://store.steampowered.com/api/appdetails?appids={}", appid),
+    ];
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+        .danger_accept_invalid_certs(true)
+        .timeout(std::time::Duration::from_secs(6))
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+
+    let mut body_json: Option<serde_json::Value> = None;
+
+    for url in &endpoints {
+        if let Ok(resp) = client.get(url).send().await {
+            if resp.status().is_success() {
+                if let Ok(json) = resp.json::<serde_json::Value>().await {
+                    let app_key = appid.to_string();
+                    if json.get(&app_key).and_then(|d| d.get("success")).and_then(|s| s.as_bool()).unwrap_or(false) {
+                        body_json = Some(json);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // If online fetching succeeded and returned data
+    if let Some(json) = body_json {
+        let app_key = appid.to_string();
+        if let Some(app_data) = json.get(&app_key) {
+            if let Some(data) = app_data.get("data") {
+                let name = data.get("name").and_then(|n| n.as_str()).unwrap_or("未知游戏").to_string();
+                let short_desc = data.get("short_description").and_then(|s| s.as_str()).unwrap_or("").to_string();
+                let header_image = data.get("header_image").and_then(|h| h.as_str()).unwrap_or("").to_string();
+                let capsule_image = data.get("capsule_image").and_then(|c| c.as_str()).unwrap_or("").to_string();
+                let background = data.get("background").and_then(|b| b.as_str()).unwrap_or("").to_string();
+
+                let developers: Vec<String> = data
+                    .get("developers")
+                    .and_then(|d| d.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+
+                let publishers: Vec<String> = data
+                    .get("publishers")
+                    .and_then(|p| p.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .unwrap_or_default();
+
+                let dlcs: Vec<u32> = data
+                    .get("dlc")
+                    .and_then(|d| d.as_array())
+                    .map(|arr| arr.iter().filter_map(|v| v.as_u64().map(|id| id as u32)).collect())
+                    .unwrap_or_default();
+
+                let genres: Vec<String> = data
+                    .get("genres")
+                    .and_then(|g| g.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.get("description").and_then(|d| d.as_str()).map(String::from))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                let release_date = data
+                    .get("release_date")
+                    .and_then(|r| r.get("date"))
+                    .and_then(|d| d.as_str())
+                    .unwrap_or("未知")
+                    .to_string();
+
+                // Generate standard Lua script
+                let mut lua_lines = Vec::new();
+                lua_lines.push(format!("-- Name: {}", name));
+                lua_lines.push(format!("-- AppID: {}", appid));
+                if !developers.is_empty() {
+                    lua_lines.push(format!("-- Developer: {}", developers.join(", ")));
+                }
+                lua_lines.push(String::new());
+                lua_lines.push(format!("addappid({})", appid));
+
+                if !dlcs.is_empty() {
+                    lua_lines.push(String::new());
+                    lua_lines.push(format!("-- DLCs ({})", dlcs.len()));
+                    for dlc_id in &dlcs {
+                        lua_lines.push(format!("addappid({})", dlc_id));
+                    }
+                }
+
+                let generated_lua = lua_lines.join("\n");
+
+                return Ok(SteamStoreDetails {
+                    appid,
+                    name,
+                    short_description: short_desc,
+                    header_image,
+                    capsule_image,
+                    background,
+                    developers,
+                    publishers,
+                    dlcs,
+                    genres,
+                    release_date,
+                    generated_lua,
+                });
+            }
+        }
+    }
+
+    // Graceful Fallback: If network is blocked by GFW / ISP or game has no public page
+    let name = format!("Steam 游戏 (AppID: {})", appid);
+    let header = format!("https://cdn.akamai.steamstatic.com/steam/apps/{}/header.jpg", appid);
+    let capsule = format!("https://cdn.akamai.steamstatic.com/steam/apps/{}/capsule_616x353.jpg", appid);
+    let generated_lua = format!("-- Name: {}\n-- AppID: {}\n\naddappid({})\n", name, appid, appid);
+
+    Ok(SteamStoreDetails {
+        appid,
+        name,
+        short_description: "由于当前网络无法直连 Steam 商店接口（或游戏需登录访问），已自动为您离线解析该 AppID 并生成基础入库脚本。可直接点击下方一键入库并部署。".to_string(),
+        header_image: header,
+        capsule_image: capsule,
+        background: String::new(),
+        developers: Vec::new(),
+        publishers: Vec::new(),
+        dlcs: Vec::new(),
+        genres: Vec::new(),
+        release_date: "未知".to_string(),
+        generated_lua,
+    })
+}
