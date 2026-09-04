@@ -98,3 +98,16 @@ export async function openFolderInExplorer(folderPath: string): Promise<void> {
 export async function cleanAllDepotCache(customPath?: string): Promise<string> {
   return invoke<string>('clean_all_depot_cache', { customPath: customPath || null });
 }
+
+export async function downloadOnlineManifest(appid: number, customPath?: string): Promise<ZipImportResult> {
+  return invoke<ZipImportResult>('download_online_manifest', { appid, steamPath: customPath || null });
+}
+
+export async function getManifestSource(customPath?: string): Promise<string> {
+  return invoke<string>('get_manifest_source', { steamPath: customPath || null });
+}
+
+export async function setManifestSource(source: string, customPath?: string): Promise<string> {
+  return invoke<string>('set_manifest_source', { source, steamPath: customPath || null });
+}
+

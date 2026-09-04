@@ -139,6 +139,21 @@
             </div>
           </div>
         </div>
+
+        <!-- Manifest Upstream Source Selector Row -->
+        <div class="manifest-source-row">
+          <div class="source-info">
+            <div class="source-title">OpenSteamTool 清单请求上游源 (opensteamtool.toml)</div>
+            <div class="source-desc">Steam 客户端请求未购买游戏清单时 Hook 调用的上游 API 源</div>
+          </div>
+          <div class="source-action">
+            <select v-model="currentSource" class="source-select font-mono" @change="handleChangeSource">
+              <option value="wudrm">WUDRM</option>
+              <option value="opensteamtool">OST</option>
+              <option value="steamrun">SR</option>
+            </select>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -223,9 +238,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '../api/tauri';
+import * as api from '../api/tauri';
 import {
   FolderCog,
   Check,
@@ -265,6 +281,26 @@ const emit = defineEmits<{
 }>();
 
 const customPathInput = ref('');
+const currentSource = ref('wudrm');
+
+onMounted(async () => {
+  try {
+    const src = await api.getManifestSource();
+    if (src) {
+      currentSource.value = src;
+    }
+  } catch (e) {
+    console.warn('Failed to load manifest source:', e);
+  }
+});
+
+const handleChangeSource = async () => {
+  try {
+    await api.setManifestSource(currentSource.value);
+  } catch (e) {
+    console.error('Failed to update manifest source:', e);
+  }
+};
 
 watch(
   () => props.steamInfo.steam_path,
@@ -545,5 +581,58 @@ const handleAutoDetect = () => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Manifest Upstream Source */
+.manifest-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  margin-top: 10px;
+}
+
+.source-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.source-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.source-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.source-action {
+  flex-shrink: 0;
+}
+
+.source-select {
+  background: rgba(13, 18, 28, 0.9);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 5px 10px;
+  color: var(--accent-cyan);
+  font-size: 11.5px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+}
+.source-select:focus {
+  border-color: var(--accent-cyan);
+}
+.source-select option {
+  background: #0f172a;
+  color: #ffffff;
 }
 </style>

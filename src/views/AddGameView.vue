@@ -8,16 +8,16 @@
         @click="activeMode = 'zip'"
       >
         <Archive :size="16" />
-        <span>清单压缩包 / Lua 脚本导入 (.zip, .lua)</span>
+        <span>本地导入</span>
       </button>
 
       <button
         class="mode-tab-btn"
-        :class="{ active: activeMode === 'url' }"
-        @click="activeMode = 'url'"
+        :class="{ active: activeMode === 'online' }"
+        @click="activeMode = 'online'"
       >
-        <Link2 :size="16" />
-        <span>Steam 商店链接 / AppID 入库</span>
+        <Download :size="16" />
+        <span>在线下载</span>
       </button>
 
       <button
@@ -26,7 +26,7 @@
         @click="activeMode = 'custom'"
       >
         <Code2 :size="16" />
-        <span>自定义 Lua 脚本</span>
+        <span>自定义脚本</span>
       </button>
     </div>
 
@@ -78,11 +78,6 @@
             <FolderOpen :size="15" />
             <span>{{ selectedZipPath ? '重新选择文件' : '选择本地 ZIP / LUA 文件' }}</span>
           </button>
-          
-          <button class="btn btn-ghost" @click.stop="useSampleZip">
-            <Sparkles :size="15" class="text-cyan" />
-            <span>使用工作区示例 (1245620.zip)</span>
-          </button>
         </div>
       </div>
 
@@ -104,97 +99,50 @@
       </div>
     </div>
 
-    <!-- Mode 2: Steam Store Link / AppID -->
-    <div v-else-if="activeMode === 'url'" class="tab-content">
+    <!-- Mode 2: Online Manifest & Key Download by AppID -->
+    <div v-else-if="activeMode === 'online'" class="tab-content">
       <!-- Tip Banner -->
       <div class="tip-banner glass-panel">
-        <Info :size="18" class="text-cyan flex-shrink-0" />
+        <Sparkles :size="18" class="text-cyan flex-shrink-0" />
         <div class="tip-content">
-          <div class="tip-title">Steam 商店链接抓取说明</div>
+          <div class="tip-title">输入 AppID 在线下载清单与密钥</div>
           <div class="tip-desc">
-            此方式通过公开 Steam API 抓取游戏元数据与全套 DLC 授权。<b>适用于：</b>一键解锁已拥有本体游戏的全部 DLC、关联本地已安装游戏等。
-            <br />
-            若需要<b>直接在 Steam 客户端内高速下载未购买的游戏本体</b>，需要包含 Depot 解密密钥的<b>「下载清单压缩包 (.zip)」</b>（请切换至上方第一个选项卡导入）。
+            输入 Steam 游戏 AppID，软件将自动从云端检索下载包含 <b>.manifest 实体清单</b> 与 <b>解密密钥</b> 的完整包，并一键解压部署至 Steam，直接支持客户端内点击下载。
           </div>
         </div>
       </div>
 
       <div class="input-card glass-panel">
-        <label class="input-label">输入 Steam 游戏商店链接或 AppID：</label>
+        <div class="input-card-header">
+          <label class="input-label">输入 Steam 游戏 AppID：</label>
+          <div class="source-picker">
+            <Globe2 :size="13" class="text-cyan" />
+            <span class="source-picker-label">清单上游源:</span>
+            <select v-model="selectedSource" class="source-select font-mono" @change="handleChangeSource">
+              <option value="wudrm">WUDRM</option>
+              <option value="opensteamtool">OST</option>
+              <option value="steamrun">SR</option>
+            </select>
+          </div>
+        </div>
+
         <div class="url-input-row">
           <input
-            v-model="storeInput"
+            v-model="appidInput"
             type="text"
-            class="input-text url-input"
-            placeholder="例如: https://store.steampowered.com/app/1245620/_/ 或 1245620"
-            @keyup.enter="handleFetchStore"
+            class="input-text url-input font-mono"
+            placeholder="例如: 1245620 (艾尔登法环) 或 2868840 (杀戮尖塔2)"
+            @keyup.enter="handleDownloadManifestDirect"
           />
-          <button class="btn btn-primary" :disabled="fetching || !storeInput.trim()" @click="handleFetchStore">
-            <Search :size="15" :class="{ 'animate-spin': fetching }" />
-            <span>{{ fetching ? '正在抓取...' : '查询并解析' }}</span>
+          <button
+            class="btn btn-success"
+            :disabled="downloadingManifest || !appidInput.trim()"
+            @click="handleDownloadManifestDirect"
+            title="自动从高速清单源下载完整 .manifest 实体文件与密钥并一键入库部署"
+          >
+            <Download :size="15" :class="{ 'animate-spin': downloadingManifest }" />
+            <span>{{ downloadingManifest ? '正在入库...' : '一键入库' }}</span>
           </button>
-        </div>
-        <div class="quick-samples">
-          <span class="sample-label">快速测试：</span>
-          <button class="sample-btn" @click="quickFillAppid(1245620)">艾尔登法环 (1245620)</button>
-          <button class="sample-btn" @click="quickFillAppid(1086940)">博德之门3 (1086940)</button>
-          <button class="sample-btn" @click="quickFillAppid(413150)">星露谷物语 (413150)</button>
-          <button class="sample-btn" @click="quickFillAppid(1325200)">仁王2 (1325200)</button>
-        </div>
-      </div>
-
-      <!-- Preview Game Card if Fetched -->
-      <div v-if="fetchedGame" class="game-preview-card glass-card">
-        <div class="preview-layout">
-          <!-- Left: Banner & Metadata -->
-          <div class="preview-left">
-            <div class="preview-banner-box">
-              <img :src="fetchedGame.header_image" class="preview-banner-img" :alt="fetchedGame.name" />
-              <div class="preview-appid-badge font-mono">AppID: {{ fetchedGame.appid }}</div>
-            </div>
-            
-            <div class="preview-meta">
-              <h3 class="preview-game-title">{{ fetchedGame.name }}</h3>
-              <p class="preview-desc">{{ fetchedGame.short_description }}</p>
-              
-              <div class="meta-row">
-                <span class="meta-label">开发商：</span>
-                <span class="meta-val">{{ fetchedGame.developers.join(', ') || '未知' }}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-label">发行日期：</span>
-                <span class="meta-val">{{ fetchedGame.release_date || '未知' }}</span>
-              </div>
-              <div v-if="fetchedGame.dlcs.length > 0" class="meta-row">
-                <span class="meta-label">DLC 扩展：</span>
-                <span class="badge badge-purple">{{ fetchedGame.dlcs.length }} 款 DLC 全部包含</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right: Generated Lua Script Editor -->
-          <div class="preview-right">
-            <div class="lua-editor-header">
-              <span class="editor-title font-mono">{{ fetchedGame.appid }}.lua (自动生成)</span>
-              <span class="editor-tip">可根据需要调整内容</span>
-            </div>
-            <textarea
-              v-model="fetchedGame.generated_lua"
-              class="code-textarea font-mono"
-              spellcheck="false"
-            ></textarea>
-            
-            <div class="preview-actions">
-              <button
-                class="btn btn-success btn-lg"
-                :disabled="savingUrlGame"
-                @click="handleSaveUrlGame"
-              >
-                <CheckCircle2 :size="16" />
-                <span>{{ savingUrlGame ? '正在入库...' : '一键写入并入库游戏' }}</span>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -261,7 +209,6 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { isTauri } from '../api/tauri';
 import {
   Archive,
-  Link2,
   Code2,
   UploadCloud,
   FolderOpen,
@@ -269,37 +216,37 @@ import {
   FileArchive,
   FileCode2,
   ArrowRight,
-  Search,
   CheckCircle2,
   Save,
   X,
   Copy,
   Check,
-  Info,
+  Download,
+  Globe2,
 } from 'lucide-vue-next';
-import type { SteamStoreDetails } from '../types/steam';
+import * as api from '../api/tauri';
 
 const emit = defineEmits<{
   (e: 'import-zip', zipPath: string): void;
-  (e: 'fetch-store', input: string): void;
   (e: 'save-lua', appid: number, content: string): void;
+  (e: 'download-manifest', appid: number): void;
+  (e: 'update-manifest-source', source: string): void;
 }>();
 
 const props = defineProps<{
   importing?: boolean;
-  fetching?: boolean;
-  fetchedGame?: SteamStoreDetails | null;
-  savingUrlGame?: boolean;
+  downloadingManifest?: boolean;
   initialZipPath?: string;
 }>();
 
-const activeMode = ref<'zip' | 'url' | 'custom'>('zip');
+const activeMode = ref<'zip' | 'online' | 'custom'>('zip');
 const isDragging = ref(false);
 const selectedZipPath = ref('');
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const copiedPath = ref(false);
 
-const storeInput = ref('');
+const appidInput = ref('');
+const selectedSource = ref('wudrm');
 
 // Custom Lua fields
 const customAppid = ref<number | null>(null);
@@ -332,6 +279,15 @@ let unlistenDragDrop: (() => void) | null = null;
 
 onMounted(async () => {
   if (isTauri()) {
+    try {
+      const src = await api.getManifestSource();
+      if (src) {
+        selectedSource.value = src;
+      }
+    } catch (e) {
+      console.warn('Failed to get manifest source:', e);
+    }
+
     try {
       unlistenDragDrop = await getCurrentWebview().onDragDropEvent((event) => {
         if (event.payload.type === 'enter' || event.payload.type === 'over') {
@@ -436,30 +392,35 @@ const copyPath = async () => {
   }
 };
 
-const useSampleZip = () => {
-  selectedZipPath.value = 'c:\\Users\\Administrator\\Desktop\\AI\\SteamAuto\\下载清单\\Walftech-Game-1245620.zip';
-};
-
 const handleImportZip = () => {
   if (selectedZipPath.value) {
     emit('import-zip', selectedZipPath.value);
   }
 };
 
-const quickFillAppid = (id: number) => {
-  storeInput.value = `https://store.steampowered.com/app/${id}/`;
-  handleFetchStore();
+const extractAppId = (input: string): number | null => {
+  const trimmed = input.trim();
+  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
+  const match = trimmed.match(/\/app\/(\d+)/);
+  if (match) return parseInt(match[1], 10);
+  const digits = trimmed.match(/\b\d{4,8}\b/);
+  return digits ? parseInt(digits[0], 10) : null;
 };
 
-const handleFetchStore = () => {
-  if (storeInput.value.trim()) {
-    emit('fetch-store', storeInput.value.trim());
+const handleChangeSource = async () => {
+  try {
+    await api.setManifestSource(selectedSource.value);
+    emit('update-manifest-source', selectedSource.value);
+  } catch (e) {
+    console.error('Failed to set manifest source:', e);
   }
 };
 
-const handleSaveUrlGame = () => {
-  if (props.fetchedGame) {
-    emit('save-lua', props.fetchedGame.appid, props.fetchedGame.generated_lua);
+const handleDownloadManifestDirect = () => {
+  if (!appidInput.value.trim() || props.downloadingManifest) return;
+  const appid = extractAppId(appidInput.value);
+  if (appid) {
+    emit('download-manifest', appid);
   }
 };
 
@@ -683,6 +644,44 @@ const handleSaveCustom = () => {
   padding: 20px;
 }
 
+.input-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.source-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.source-picker-label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.source-select {
+  background: transparent;
+  border: none;
+  color: var(--accent-cyan);
+  font-size: 11.5px;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+.source-select option {
+  background: #0f172a;
+  color: #ffffff;
+}
+
 .input-label {
   font-size: 13px;
   font-weight: 600;
@@ -696,161 +695,6 @@ const handleSaveCustom = () => {
 
 .url-input {
   flex: 1;
-}
-
-.quick-samples {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-
-.sample-label {
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.sample-btn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-  padding: 3px 10px;
-  border-radius: var(--radius-sm);
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.sample-btn:hover {
-  color: var(--accent-cyan);
-  background: rgba(0, 242, 255, 0.1);
-  border-color: rgba(0, 242, 255, 0.3);
-}
-
-/* Preview Card */
-.game-preview-card {
-  padding: 20px;
-  background: #101625;
-}
-
-.preview-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-
-.preview-left {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.preview-banner-box {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 460 / 215;
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: #090d15;
-}
-
-.preview-banner-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.preview-appid-badge {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  background: rgba(0, 0, 0, 0.8);
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  color: var(--text-main);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.preview-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.preview-game-title {
-  font-size: 18px;
-  font-weight: 800;
-  color: #ffffff;
-}
-
-.preview-desc {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.6;
-}
-
-.meta-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-}
-
-.meta-label {
-  color: var(--text-dim);
-}
-
-.meta-val {
-  color: var(--text-secondary);
-}
-
-/* Right Editor */
-.preview-right {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.lua-editor-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.editor-title {
-  font-size: 12px;
-  color: var(--accent-cyan);
-  font-weight: 600;
-}
-
-.editor-tip {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.code-textarea {
-  width: 100%;
-  height: 220px;
-  background: #090d15;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 12px;
-  color: #38bdf8;
-  font-size: 12px;
-  line-height: 1.6;
-  resize: vertical;
-  outline: none;
-}
-
-.code-textarea:focus {
-  border-color: var(--accent-cyan);
-}
-
-.preview-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 6px;
 }
 
 /* Custom Mode */
@@ -883,6 +727,36 @@ const handleSaveCustom = () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.lua-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.editor-title {
+  font-size: 12px;
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.code-textarea {
+  width: 100%;
+  height: 220px;
+  background: #090d15;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  color: #38bdf8;
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+}
+
+.code-textarea:focus {
+  border-color: var(--accent-cyan);
 }
 
 .editor-toolbar {

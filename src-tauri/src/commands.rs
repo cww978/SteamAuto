@@ -6,6 +6,7 @@ use crate::steam::parser::{self, GameItem, ZipImportResult};
 use crate::steam::process::{self, SteamProcessStatus};
 use crate::steam::store_api::{self, SteamStoreDetails};
 use crate::steam::unlocker;
+use crate::steam::online_manifest;
 
 fn resolve_steam_path(custom_path: Option<String>) -> PathBuf {
     if let Some(p) = custom_path {
@@ -159,3 +160,22 @@ pub fn clean_all_depot_cache(custom_path: Option<String>) -> Result<String, Stri
 
     Ok(format!("已成功清理 {} 个清单缓存文件", count))
 }
+
+#[tauri::command]
+pub async fn download_online_manifest(appid: u32, steam_path: Option<String>) -> Result<parser::ZipImportResult, String> {
+    let steam_dir = resolve_steam_path(steam_path);
+    online_manifest::download_and_install_manifest_by_appid(&steam_dir, appid).await
+}
+
+#[tauri::command]
+pub fn get_manifest_source(steam_path: Option<String>) -> Result<String, String> {
+    let steam_dir = resolve_steam_path(steam_path);
+    Ok(online_manifest::get_ost_manifest_source(&steam_dir))
+}
+
+#[tauri::command]
+pub fn set_manifest_source(source: String, steam_path: Option<String>) -> Result<String, String> {
+    let steam_dir = resolve_steam_path(steam_path);
+    online_manifest::set_ost_manifest_source(&steam_dir, &source)
+}
+

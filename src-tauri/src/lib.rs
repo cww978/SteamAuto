@@ -28,6 +28,9 @@ pub fn run() {
             launch_game_by_id,
             open_folder_in_explorer,
             clean_all_depot_cache,
+            download_online_manifest,
+            get_manifest_source,
+            set_manifest_source,
         ])
         .run(tauri::generate_context!())
         .expect("error while running steam-auto tauri application");

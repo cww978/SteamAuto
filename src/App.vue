@@ -33,12 +33,10 @@
           v-else-if="currentTab === 'add'"
           :initial-zip-path="droppedZipPath"
           :importing="isImporting"
-          :fetching="isFetchingStore"
-          :fetched-game="fetchedStoreGame"
-          :saving-url-game="isSavingUrlGame"
+          :downloading-manifest="isDownloadingManifest"
           @import-zip="handleImportZip"
-          @fetch-store="handleFetchStore"
           @save-lua="handleSaveLua"
+          @download-manifest="handleDownloadOnlineManifest"
         />
 
         <!-- 3. Accounts View -->
@@ -118,7 +116,6 @@ import type {
   SteamProcessStatus,
   GameItem,
   SteamAccount,
-  SteamStoreDetails,
   ToastMessage,
 } from './types/steam';
 
@@ -155,9 +152,7 @@ const loadingGames = ref(false);
 const loadingAccounts = ref(false);
 const isRestarting = ref(false);
 const isImporting = ref(false);
-const isFetchingStore = ref(false);
-const fetchedStoreGame = ref<SteamStoreDetails | null>(null);
-const isSavingUrlGame = ref(false);
+const isDownloadingManifest = ref(false);
 const isSavingLua = ref(false);
 const switchingAccountId = ref<string | null>(null);
 
@@ -304,21 +299,7 @@ const handleImportZip = async (filePath: string) => {
   }
 };
 
-const handleFetchStore = async (input: string) => {
-  isFetchingStore.value = true;
-  try {
-    const data = await api.fetchGameFromStoreOrUrl(input);
-    fetchedStoreGame.value = data;
-    addToast('info', `已获取: ${data.name}`, `AppID: ${data.appid}，包含 ${data.dlcs.length} 款 DLC`);
-  } catch (err: any) {
-    addToast('error', '抓取商店信息失败', err.toString());
-  } finally {
-    isFetchingStore.value = false;
-  }
-};
-
 const handleSaveLua = async (appid: number, content: string) => {
-  isSavingUrlGame.value = true;
   try {
     const msg = await api.saveGameLua(appid, content, customSteamPath.value);
     addToast('success', '入库成功', msg);
@@ -326,8 +307,20 @@ const handleSaveLua = async (appid: number, content: string) => {
     currentTab.value = 'library';
   } catch (err: any) {
     addToast('error', '保存 Lua 脚本失败', err.toString());
+  }
+};
+
+const handleDownloadOnlineManifest = async (appid: number) => {
+  isDownloadingManifest.value = true;
+  try {
+    const res = await api.downloadOnlineManifest(appid, customSteamPath.value);
+    addToast('success', `成功入库: ${res.name || res.appid}`, res.message);
+    await loadGames();
+    currentTab.value = 'library';
+  } catch (err: any) {
+    addToast('error', '在线下载清单失败', err.toString());
   } finally {
-    isSavingUrlGame.value = false;
+    isDownloadingManifest.value = false;
   }
 };
 
