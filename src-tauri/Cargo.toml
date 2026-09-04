@@ -1,6 +1,6 @@
 [package]
 name = "steam-auto"
-version = "1.0.0"
+version = "1.0.1"
 description = "Steam Fake Library & Unlocker Tool"
 authors = ["SteamAuto Team"]
 edition = "2021"

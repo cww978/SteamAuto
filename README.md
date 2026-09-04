@@ -4,13 +4,13 @@
 
 **一款现代化、轻量高效的 Steam 假入库与游戏管理桌面工具**
 
-[![Release](https://img.shields.io/github/v/release/cww978/SteamAuto?style=flat-square&color=00f2ff)](https://github.com/cww978/SteamAuto/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/github/v/release/cww978/SteamAuto?style=flat-square&color=00f2ff)](https://github.com/cww978/SteamAuto/releases/tag/v1.0.1)
 [![Platform](https://img.shields.io/badge/platform-Windows-0077ff?style=flat-square)](https://github.com/cww978/SteamAuto)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg?style=flat-square)](LICENSE)
 
 <br/>
 
-[![Download](https://img.shields.io/badge/📥_前往下载-Release_v1.0.0-00f2ff?style=for-the-badge)](https://github.com/cww978/SteamAuto/releases/tag/v1.0.0)
+[![Download](https://img.shields.io/badge/📥_前往下载-Release_v1.0.1-00f2ff?style=for-the-badge)](https://github.com/cww978/SteamAuto/releases/tag/v1.0.1)
 
 </div>
 
@@ -20,13 +20,13 @@
 
 最新版本及打包资产已发布至 GitHub Release，点击下方链接即可进入 Release 详情页或直接下载：
 
-👉 **[前往 GitHub Release v1.0.0 页面下载](https://github.com/cww978/SteamAuto/releases/tag/v1.0.0)**
+👉 **[前往 GitHub Release v1.0.1 页面下载](https://github.com/cww978/SteamAuto/releases/tag/v1.0.1)**
 
 | 安装包类型 | 文件名 | 说明 | 下载直链 |
 | :--- | :--- | :--- | :--- |
-| **标准安装包 (推荐)** | `SteamAuto_1.0.0_x64-setup.exe` | 推荐，支持桌面图标与开始菜单安装引导 | [点击下载](https://github.com/cww978/SteamAuto/releases/download/v1.0.0/SteamAuto_1.0.0_x64-setup.exe) |
-| **MSI 安装包** | `SteamAuto_1.0.0_x64_en-US.msi` | Windows 原生 MSI 格式安装程序 | [点击下载](https://github.com/cww978/SteamAuto/releases/download/v1.0.0/SteamAuto_1.0.0_x64_en-US.msi) |
-| **绿色便携版** | `SteamAuto_1.0.0_portable.zip` | 免安装绿色包，解压即用 | [点击下载](https://github.com/cww978/SteamAuto/releases/download/v1.0.0/SteamAuto_1.0.0_portable.zip) |
+| **标准安装包 (推荐)** | `SteamAuto_1.0.1_x64-setup.exe` | 推荐，支持桌面图标与开始菜单安装引导 | [点击下载](https://github.com/cww978/SteamAuto/releases/download/v1.0.1/SteamAuto_1.0.1_x64-setup.exe) |
+| **MSI 安装包** | `SteamAuto_1.0.1_x64_en-US.msi` | Windows 原生 MSI 格式安装程序 | [点击下载](https://github.com/cww978/SteamAuto/releases/download/v1.0.1/SteamAuto_1.0.1_x64_en-US.msi) |
+| **绿色便携版** | `SteamAuto_1.0.1_portable.zip` | 免安装绿色包，解压即用 | [点击下载](https://github.com/cww978/SteamAuto/releases/download/v1.0.1/SteamAuto_1.0.1_portable.zip) |
 
 ---
 
