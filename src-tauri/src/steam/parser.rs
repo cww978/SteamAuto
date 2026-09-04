@@ -33,19 +33,23 @@ pub fn parse_lua_details(content: &str, default_appid_hint: Option<u32>) -> (u32
     let mut dlcs = Vec::new();
     let mut manifest_depots = Vec::new();
 
-    // Regex for comments
-    let re_name_tag = Regex::new(r"(?i)--\s*(?:Name|Game|Title):\s*(.+)").unwrap();
-    let re_appid_tag = Regex::new(r"(?i)--\s*AppID:?\s*(\d+)").unwrap();
+    // Regex for explicit name tags: --Gamename ..., -- Name: ..., -- Title: ...
+    let re_name_tag = Regex::new(r"(?i)^--\s*(?:Game\s*name|Gamename|Game|Name|Title)\s*[:=]?\s*(.+)").unwrap();
+    let re_appid_tag = Regex::new(r"(?i)^--\s*AppID:?\s*(\d+)").unwrap();
+    let re_inline_comment = Regex::new(r#"(?i)addappid\s*\(\s*(\d+)[^)]*\)\s*--(?:Main\s*appid|Mainappid)?\s*(.+)"#).unwrap();
 
     for line in content.lines() {
         // Strip zero-width unicode characters
-        let clean_line: String = line.chars().filter(|&c| c != '\u{200B}' && c != '\u{200C}' && c != '\u{200D}' && c != '\u{FEFF}' && c != '\u{2060}').collect();
+        let clean_line: String = line.chars().filter(|&c| {
+            c != '\u{200B}' && c != '\u{200C}' && c != '\u{200D}' && c != '\u{FEFF}' && c != '\u{2060}'
+        }).collect();
         let trimmed = clean_line.trim();
 
         if trimmed.starts_with("--") {
             if let Some(caps) = re_name_tag.captures(trimmed) {
-                if detected_name.is_empty() {
-                    detected_name = caps[1].trim().to_string();
+                let candidate = caps[1].trim();
+                if detected_name.is_empty() && candidate.chars().any(|c| c.is_alphanumeric()) {
+                    detected_name = candidate.to_string();
                 }
             } else if let Some(caps) = re_appid_tag.captures(trimmed) {
                 if detected_appid == 0 {
@@ -54,22 +58,38 @@ pub fn parse_lua_details(content: &str, default_appid_hint: Option<u32>) -> (u32
                     }
                 }
             } else if detected_name.is_empty() {
-                // Check if this is a title header like: "-- Slay the Spire 2"
-                let comment_text = trimmed.trim_start_matches('-').trim();
+                // Check if this is a general title comment, e.g. "-- Slay the Spire 2"
+                let comment_text = trimmed.trim_start_matches(|c| c == '-' || c == '[' || c == ']').trim();
                 let lower = comment_text.to_lowercase();
-                if !comment_text.is_empty() 
-                    && !lower.starts_with("appid") 
-                    && !lower.starts_with("generated") 
-                    && !lower.starts_with("note") 
-                    && !lower.starts_with("main application") 
-                    && !lower.starts_with("content depots")
-                    && !lower.starts_with("http")
-                    && !lower.starts_with("depot")
-                    && !lower.starts_with("addappid")
-                    && !lower.starts_with("setmanifest")
-                {
+                let has_alphanumeric = comment_text.chars().any(|c| c.is_alphanumeric());
+                let is_noise = lower.starts_with("appid")
+                    || lower.starts_with("generated")
+                    || lower.starts_with("note")
+                    || lower.starts_with("main application")
+                    || lower.starts_with("content depot")
+                    || lower.starts_with("descargado")
+                    || lower.starts_with("generador")
+                    || lower.starts_with("discord")
+                    || lower.starts_with("fecha")
+                    || lower.starts_with("http")
+                    || lower.starts_with("depot")
+                    || lower.starts_with("addappid")
+                    || lower.starts_with("setmanifest");
+
+                if has_alphanumeric && !is_noise {
                     detected_name = comment_text.to_string();
                 }
+            }
+        }
+    }
+
+    // Fallback: check inline comments on addappid calls if detected_name is still empty
+    if detected_name.is_empty() {
+        for cap in re_inline_comment.captures_iter(content) {
+            let candidate = cap[2].trim();
+            if candidate.chars().any(|c| c.is_alphanumeric()) {
+                detected_name = candidate.to_string();
+                break;
             }
         }
     }
