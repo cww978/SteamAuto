@@ -19,6 +19,8 @@ pub fn run() {
             save_game_lua,
             remove_game,
             fetch_game_from_store_or_url,
+            get_game_cache,
+            crawl_steam_cover,
             get_accounts,
             switch_account,
             logout_account,

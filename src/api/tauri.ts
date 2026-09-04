@@ -47,9 +47,26 @@ export async function removeGame(appid: number, deleteManifests: boolean, custom
   return invoke<string>('remove_game', { appid, deleteManifests, customPath: customPath || null });
 }
 
-export async function fetchGameFromStoreOrUrl(input: string): Promise<SteamStoreDetails> {
-  return invoke<SteamStoreDetails>('fetch_game_from_store_or_url', { input });
+export async function getGameCache(customPath?: string): Promise<Record<number, SteamStoreDetails>> {
+  return invoke<Record<number, SteamStoreDetails>>('get_game_cache', { customPath: customPath || null });
 }
+
+export async function fetchGameFromStoreOrUrl(
+  input: string,
+  forceRefresh?: boolean,
+  customPath?: string
+): Promise<SteamStoreDetails> {
+  return invoke<SteamStoreDetails>('fetch_game_from_store_or_url', {
+    input,
+    forceRefresh: forceRefresh || false,
+    customPath: customPath || null,
+  });
+}
+
+export async function crawlSteamCover(appid: number): Promise<string> {
+  return invoke<string>('crawl_steam_cover', { appid });
+}
+
 
 // Accounts Management
 export async function getAccounts(customPath?: string): Promise<SteamAccount[]> {

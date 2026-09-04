@@ -50,6 +50,7 @@ export interface SteamStoreDetails {
   genres: string[];
   release_date: string;
   generated_lua: string;
+  is_official?: boolean;
 }
 
 export interface SteamAccount {
@@ -73,3 +74,4 @@ export interface ToastMessage {
   description?: string;
   duration?: number;
 }
+

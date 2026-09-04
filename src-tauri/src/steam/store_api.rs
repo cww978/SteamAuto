@@ -1,5 +1,7 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SteamStoreDetails {
@@ -15,6 +17,7 @@ pub struct SteamStoreDetails {
     pub genres: Vec<String>,
     pub release_date: String,
     pub generated_lua: String,
+    pub is_official: bool,
 }
 
 pub fn extract_appid_from_input(input: &str) -> Option<u32> {
@@ -159,6 +162,7 @@ pub async fn fetch_steam_app_details(appid: u32) -> Result<SteamStoreDetails, St
                     genres,
                     release_date,
                     generated_lua,
+                    is_official: true,
                 });
             }
         }
@@ -183,5 +187,72 @@ pub async fn fetch_steam_app_details(appid: u32) -> Result<SteamStoreDetails, St
         genres: Vec::new(),
         release_date: "未知".to_string(),
         generated_lua,
+        is_official: false,
     })
 }
+
+pub fn load_game_cache(steam_path: &Path) -> HashMap<u32, SteamStoreDetails> {
+    let cache_file = steam_path.join("config").join("game_cache.json");
+    if cache_file.exists() {
+        if let Ok(content) = std::fs::read_to_string(&cache_file) {
+            if let Ok(map) = serde_json::from_str::<HashMap<u32, SteamStoreDetails>>(&content) {
+                return map;
+            }
+        }
+    }
+    HashMap::new()
+}
+
+pub fn save_game_cache(steam_path: &Path, cache: &HashMap<u32, SteamStoreDetails>) {
+    let config_dir = steam_path.join("config");
+    let _ = std::fs::create_dir_all(&config_dir);
+    let cache_file = config_dir.join("game_cache.json");
+    if let Ok(json) = serde_json::to_string_pretty(cache) {
+        let _ = std::fs::write(&cache_file, json);
+    }
+}
+
+pub fn get_all_cached_game_details(steam_path: &Path) -> HashMap<u32, SteamStoreDetails> {
+    load_game_cache(steam_path)
+}
+
+pub async fn get_or_fetch_game_details(
+    appid: u32,
+    steam_path: &Path,
+    force_refresh: bool,
+) -> Result<SteamStoreDetails, String> {
+    if !force_refresh {
+        let cache = load_game_cache(steam_path);
+        if let Some(cached) = cache.get(&appid) {
+            if cached.is_official {
+                return Ok(cached.clone());
+            }
+        }
+    }
+
+    let details = fetch_steam_app_details(appid).await?;
+    if details.is_official {
+        let mut cache = load_game_cache(steam_path);
+        cache.insert(appid, details.clone());
+        save_game_cache(steam_path, &cache);
+    }
+
+    Ok(details)
+}
+
+pub async fn crawl_steam_cover(appid: u32) -> Result<String, String> {
+    let url = format!("https://store.steampowered.com/api/appdetails?appids={}&filters=basic", appid);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client.get(&url).send().await.map_err(|e| e.to_string())?;
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let header = json[&appid.to_string()]["data"]["header_image"]
+        .as_str()
+        .ok_or_else(|| "未找到官方封面".to_string())?;
+
+    Ok(header.to_string())
+}
+

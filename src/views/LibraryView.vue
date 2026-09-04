@@ -106,8 +106,8 @@
           </button>
         </div>
 
-        <button class="btn btn-ghost btn-refresh" :disabled="loading" @click="$emit('refresh')">
-          <RefreshCw :size="15" :class="{ 'animate-spin': loading }" />
+        <button class="btn btn-ghost btn-refresh" :disabled="loading" @click="handleRefresh">
+          <RefreshCw :size="15" :class="{ 'animate-spin': loading || isSyncing }" />
           <span>刷新</span>
         </button>
 
@@ -128,9 +128,9 @@
         <!-- Header / Banner Image -->
         <div class="game-cover-box">
           <img
-            :src="`https://cdn.akamai.steamstatic.com/steam/apps/${game.appid}/header.jpg`"
+            :src="getGameCover(game)"
             class="game-cover-img"
-            :alt="game.name"
+            :alt="getGameName(game)"
             loading="lazy"
             @error="onImageError($event, game.appid)"
           />
@@ -149,7 +149,19 @@
 
         <!-- Card Content -->
         <div class="game-info">
-          <div class="game-title" :title="game.name">{{ game.name }}</div>
+          <div class="game-title" :title="officialCache[game.appid]?.short_description || getGameName(game)">
+            {{ getGameName(game) }}
+          </div>
+
+          <!-- Official Steam Info (Genres, Release date) -->
+          <div v-if="officialCache[game.appid]?.genres?.length || officialCache[game.appid]?.release_date" class="game-official-meta">
+            <span v-if="officialCache[game.appid]?.genres?.length" class="official-genre" :title="officialCache[game.appid]?.genres?.join(', ')">
+              {{ officialCache[game.appid]?.genres?.slice(0, 2).join(' · ') }}
+            </span>
+            <span v-if="officialCache[game.appid]?.release_date" class="official-date">
+              {{ officialCache[game.appid]?.release_date }}
+            </span>
+          </div>
 
           <div class="game-meta-tags">
             <span v-if="game.dlcs.length > 0" class="badge badge-purple" :title="`已解锁 ${game.dlcs.length} 个 DLC 扩展包`">
@@ -213,14 +225,21 @@
           <tr v-for="game in filteredGames" :key="game.appid" class="table-row">
             <td>
               <img
-                :src="`https://cdn.akamai.steamstatic.com/steam/apps/${game.appid}/capsule_sm_120.jpg`"
+                :src="getGameThumb(game)"
                 class="table-thumb"
-                :alt="game.name"
+                :alt="getGameName(game)"
+                loading="lazy"
                 @error="onImageError($event, game.appid)"
               />
             </td>
             <td>
-              <div class="table-game-name">{{ game.name }}</div>
+              <div class="table-game-name" :title="officialCache[game.appid]?.short_description || getGameName(game)">
+                {{ getGameName(game) }}
+              </div>
+              <div v-if="officialCache[game.appid]?.developers?.length || officialCache[game.appid]?.genres?.length" class="table-meta-sub">
+                <span v-if="officialCache[game.appid]?.developers?.length">{{ officialCache[game.appid].developers[0] }}</span>
+                <span v-if="officialCache[game.appid]?.genres?.length"> · {{ officialCache[game.appid].genres.slice(0, 2).join(' / ') }}</span>
+              </div>
             </td>
             <td>
               <span class="font-mono table-appid">{{ game.appid }}</span>
@@ -278,11 +297,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import {
   Gamepad2,
   Layers,
   FileCheck2,
+  Code2,
   ShieldCheck,
   ShieldAlert,
   Search,
@@ -295,10 +315,14 @@ import {
   Edit3,
   ExternalLink,
   Trash2,
-  Code2,
   Sparkles,
 } from 'lucide-vue-next';
-import type { GameItem } from '../types/steam';
+import type { GameItem, SteamStoreDetails } from '../types/steam';
+import { getGameCache, fetchGameFromStoreOrUrl, crawlSteamCover } from '../api/tauri';
+
+const DEFAULT_COVER = '/default_cover.svg';
+const officialCache = reactive<Record<number, SteamStoreDetails>>({});
+const isSyncing = ref(false);
 
 const props = defineProps<{
   games: GameItem[];
@@ -306,7 +330,7 @@ const props = defineProps<{
   loading: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'refresh'): void;
   (e: 'go-add'): void;
   (e: 'edit-lua', game: GameItem): void;
@@ -317,6 +341,33 @@ defineEmits<{
 const searchQuery = ref('');
 const filterType = ref<'all' | 'manifest' | 'dlc'>('all');
 const viewMode = ref<'grid' | 'list'>('grid');
+
+const getGameName = (game: GameItem): string => {
+  const cached = officialCache[game.appid];
+  if (cached?.is_official && cached.name) {
+    return cached.name;
+  }
+  return game.name || `Steam 游戏 (AppID: ${game.appid})`;
+};
+
+const getGameCover = (game: GameItem): string => {
+  const cached = officialCache[game.appid];
+  if (cached?.header_image) {
+    return cached.header_image;
+  }
+  return `https://cdn.akamai.steamstatic.com/steam/apps/${game.appid}/header.jpg`;
+};
+
+const getGameThumb = (game: GameItem): string => {
+  const cached = officialCache[game.appid];
+  if (cached?.capsule_image) {
+    return cached.capsule_image;
+  }
+  if (cached?.header_image) {
+    return cached.header_image;
+  }
+  return `https://cdn.akamai.steamstatic.com/steam/apps/${game.appid}/capsule_sm_120.jpg`;
+};
 
 const totalDlcs = computed(() => {
   return props.games.reduce((acc, g) => acc + g.dlcs.length, 0);
@@ -336,17 +387,20 @@ const dlcGameCount = computed(() => {
 
 const filteredGames = computed(() => {
   return props.games.filter((game) => {
-    // Search query
     const q = searchQuery.value.trim().toLowerCase();
+    const displayName = getGameName(game).toLowerCase();
+    const cached = officialCache[game.appid];
     const matchesSearch =
       !q ||
+      displayName.includes(q) ||
       game.name.toLowerCase().includes(q) ||
       game.appid.toString().includes(q) ||
-      game.dlcs.some((d) => d.toString().includes(q));
+      game.dlcs.some((d) => d.toString().includes(q)) ||
+      (cached?.genres || []).some((g) => g.toLowerCase().includes(q)) ||
+      (cached?.developers || []).some((d) => d.toLowerCase().includes(q));
 
     if (!matchesSearch) return false;
 
-    // Filter type
     if (filterType.value === 'manifest') {
       return game.manifest_count > 0;
     } else if (filterType.value === 'dlc') {
@@ -357,14 +411,85 @@ const filteredGames = computed(() => {
   });
 });
 
-const onImageError = (event: Event, appid: number) => {
+const onImageError = async (event: Event, appid: number) => {
   const img = event.target as HTMLImageElement;
-  img.src = `https://cdn.akamai.steamstatic.com/steam/apps/${appid}/capsule_616x353.jpg`;
+  if (!img) return;
+  img.onerror = null;
+  img.src = DEFAULT_COVER;
+
+  try {
+    const url = await crawlSteamCover(appid);
+    if (url) {
+      img.onerror = () => { img.src = DEFAULT_COVER; };
+      img.src = url;
+      if (officialCache[appid]) {
+        officialCache[appid].header_image = url;
+      }
+    }
+  } catch {
+    // 爬取失败则保持默认图
+  }
+};
+
+const loadCache = async () => {
+  try {
+    const cacheMap = await getGameCache();
+    if (cacheMap) {
+      Object.assign(officialCache, cacheMap);
+    }
+  } catch (err) {
+    console.warn('读取本地官方游戏数据缓存失败:', err);
+  }
+};
+
+let syncRunning = false;
+const syncMissingOfficialData = async (force: boolean = false) => {
+  if (syncRunning) return;
+  syncRunning = true;
+  isSyncing.value = true;
+  try {
+    for (const game of props.games) {
+      const cached = officialCache[game.appid];
+      if (!cached || !cached.is_official || force) {
+        try {
+          const details = await fetchGameFromStoreOrUrl(String(game.appid), force);
+          if (details && details.is_official) {
+            officialCache[game.appid] = details;
+          }
+        } catch {
+          // 容错处理：网络未连接或单游戏接口失败时不阻塞后续
+        }
+        await new Promise((r) => setTimeout(r, 180));
+      }
+    }
+  } finally {
+    syncRunning = false;
+    isSyncing.value = false;
+  }
+};
+
+const handleRefresh = async () => {
+  emit('refresh');
+  await loadCache();
+  syncMissingOfficialData();
 };
 
 const openSteamStore = (appid: number) => {
   window.open(`https://store.steampowered.com/app/${appid}`, '_blank');
 };
+
+onMounted(async () => {
+  await loadCache();
+  syncMissingOfficialData();
+});
+
+watch(
+  () => props.games,
+  () => {
+    syncMissingOfficialData();
+  },
+  { deep: false }
+);
 </script>
 
 <style scoped>
@@ -575,6 +700,8 @@ const openSteamStore = (appid: number) => {
   height: 100%;
   object-fit: cover;
   transition: transform 0.4s ease;
+  font-size: 0;
+  color: transparent;
 }
 
 .game-card:hover .game-cover-img {
@@ -640,12 +767,39 @@ const openSteamStore = (appid: number) => {
 }
 
 .game-title {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.game-official-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.official-genre {
+  color: var(--accent-cyan);
+  opacity: 0.9;
+  font-weight: 500;
+}
+
+.official-date {
+  color: var(--text-muted);
+}
+
+.table-meta-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
 }
 
 .game-meta-tags {
@@ -732,6 +886,8 @@ const openSteamStore = (appid: number) => {
   object-fit: cover;
   border-radius: 4px;
   background: #090d15;
+  font-size: 0;
+  color: transparent;
 }
 
 .table-game-name {

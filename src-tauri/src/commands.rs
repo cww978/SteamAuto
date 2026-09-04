@@ -68,11 +68,28 @@ pub fn remove_game(appid: u32, delete_manifests: bool, custom_path: Option<Strin
 }
 
 #[tauri::command]
-pub async fn fetch_game_from_store_or_url(input: String) -> Result<SteamStoreDetails, String> {
+pub fn get_game_cache(custom_path: Option<String>) -> std::collections::HashMap<u32, SteamStoreDetails> {
+    let steam_path = resolve_steam_path(custom_path);
+    store_api::get_all_cached_game_details(&steam_path)
+}
+
+#[tauri::command]
+pub async fn fetch_game_from_store_or_url(
+    input: String,
+    force_refresh: Option<bool>,
+    custom_path: Option<String>,
+) -> Result<SteamStoreDetails, String> {
     let appid = store_api::extract_appid_from_input(&input)
         .ok_or("无法从输入中识别有效的 Steam AppID 或商店链接")?;
-    store_api::fetch_steam_app_details(appid).await
+    let steam_path = resolve_steam_path(custom_path);
+    store_api::get_or_fetch_game_details(appid, &steam_path, force_refresh.unwrap_or(false)).await
 }
+
+#[tauri::command]
+pub async fn crawl_steam_cover(appid: u32) -> Result<String, String> {
+    store_api::crawl_steam_cover(appid).await
+}
+
 
 #[tauri::command]
 pub fn get_accounts(custom_path: Option<String>) -> Result<Vec<SteamAccount>, String> {

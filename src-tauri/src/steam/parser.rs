@@ -132,6 +132,7 @@ pub fn get_installed_games(steam_path: &Path) -> Result<Vec<GameItem>, String> {
     let depotcache_dir = steam_path.join("depotcache");
 
     let mut games_map = std::collections::HashMap::<u32, GameItem>::new();
+    let official_cache = crate::steam::store_api::load_game_cache(steam_path);
 
     for check_dir in [&lua_dir, &stplugin_dir] {
         if !check_dir.exists() {
@@ -183,9 +184,23 @@ pub fn get_installed_games(steam_path: &Path) -> Result<Vec<GameItem>, String> {
                                     })
                                     .unwrap_or_else(|| "-".to_string());
 
+                                let official_name = if let Some(cached) = official_cache.get(&final_appid) {
+                                    if !cached.name.is_empty() && cached.is_official {
+                                        cached.name.clone()
+                                    } else if !name.is_empty() {
+                                        name
+                                    } else {
+                                        format!("Steam 游戏 (AppID: {})", final_appid)
+                                    }
+                                } else if !name.is_empty() {
+                                    name
+                                } else {
+                                    format!("Steam 游戏 (AppID: {})", final_appid)
+                                };
+
                                 let item = GameItem {
                                     appid: final_appid,
-                                    name,
+                                    name: official_name,
                                     lua_path: path.to_string_lossy().to_string(),
                                     lua_content: content,
                                     dlcs,
