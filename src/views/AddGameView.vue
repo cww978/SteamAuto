@@ -1,237 +1,341 @@
 <template>
-  <div class="add-container">
-    <!-- Sub-tab Navigation -->
-    <div class="mode-tabs glass-panel">
-      <button
-        class="mode-tab-btn"
-        :class="{ active: activeMode === 'zip' }"
-        @click="activeMode = 'zip'"
-      >
-        <Archive :size="16" />
-        <span>本地导入</span>
-      </button>
-
-      <button
-        class="mode-tab-btn"
-        :class="{ active: activeMode === 'online' }"
-        @click="activeMode = 'online'"
-      >
-        <Download :size="16" />
-        <span>在线下载</span>
-      </button>
-
-      <button
-        class="mode-tab-btn"
-        :class="{ active: activeMode === 'custom' }"
-        @click="activeMode = 'custom'"
-      >
-        <Code2 :size="16" />
-        <span>自定义脚本</span>
-      </button>
+  <div
+    class="add-container"
+    :class="{ 'is-dragging': isDragging }"
+    @dragover.prevent="isDragging = true"
+    @dragleave.prevent="isDragging = false"
+    @drop.prevent="handleNativeDrop"
+  >
+    <!-- Drag Drop Global Overlay -->
+    <div v-if="isDragging" class="drag-overlay">
+      <div class="drag-box glass-card">
+        <UploadCloud :size="48" class="text-cyan animate-bounce" />
+        <div class="drag-title">松开鼠标以导入清单文件</div>
+        <div class="drag-desc text-dim">支持 .zip 清单压缩包与 .lua 脚本文件</div>
+      </div>
     </div>
 
-    <!-- Mode 1: Zip Package or Lua Script Import -->
-    <div v-if="activeMode === 'zip'" class="tab-content">
-      <div
-        class="drop-zone glass-card"
-        :class="{ dragging: isDragging, 'has-file': !!selectedZipPath }"
-        @dragover.prevent="isDragging = true"
-        @dragleave.prevent="isDragging = false"
-        @drop.prevent="handleDrop"
-        @click="triggerFileInput"
-      >
-        <input
-          ref="fileInputRef"
-          type="file"
-          accept=".zip,.lua"
-          style="display: none"
-          @change="handleFileChange"
-        />
-        
-        <div class="drop-icon-box" :class="{ 'icon-active': !!selectedZipPath }">
-          <FileCode2 v-if="selectedZipPath && isLuaFile" :size="36" class="text-cyan" />
-          <FileArchive v-else-if="selectedZipPath" :size="36" class="text-emerald" />
-          <UploadCloud v-else :size="36" class="text-cyan" />
-        </div>
+    <!-- Hidden File Input for Local Import Button -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      accept=".zip,.lua"
+      style="display: none"
+      @change="handleFileChange"
+    />
 
-        <h3 class="drop-title">
-          {{ selectedZipPath ? selectedZipName : '拖拽下载清单压缩包 (.zip) 或 Lua 脚本 (.lua) 到此处，或点击浏览选择' }}
-        </h3>
-        <p class="drop-desc">
-          {{ selectedZipPath ? (isLuaFile ? '已锁定本地 Lua 脚本文件，确认后点击下方一键入库并部署' : '已锁定本地清单压缩包，确认后点击下方一键入库并部署') : '支持 OpenSteamTool / Walftech 压缩包（含 .manifest 部署清单）及独立 .lua 脚本' }}
-        </p>
-
-        <div v-if="selectedZipPath" class="selected-file-badge font-mono" @click.stop>
-          <CheckCircle2 :size="14" class="text-emerald flex-shrink-0" />
-          <span class="path-text" :title="selectedZipPath">{{ selectedZipPath }}</span>
-          <button class="badge-action-btn" title="复制路径" @click.stop="copyPath">
-            <Check v-if="copiedPath" :size="12" class="text-emerald" />
-            <Copy v-else :size="12" />
-          </button>
-          <button class="badge-action-btn" title="清除已选" @click.stop="clearSelectedZip">
-            <X :size="12" />
+    <!-- Top Action Toolbar -->
+    <div class="toolbar glass-panel">
+      <!-- Search Input Area -->
+      <div class="search-section">
+        <div class="search-input-box">
+          <Search :size="16" class="search-icon" />
+          <input
+            v-model="searchQuery"
+            type="text"
+            class="search-input"
+            placeholder="搜索 Steam 游戏名称（如：黑神话、艾尔登）或直接输入 AppID..."
+            @keyup.enter="handleSearch"
+          />
+          <button v-if="searchQuery" class="clear-btn" @click="clearSearch" title="清空搜索">
+            <X :size="14" />
           </button>
         </div>
 
-        <div class="drop-actions">
-          <button class="btn btn-steam" @click.stop="triggerFileInput">
-            <FolderOpen :size="15" />
-            <span>{{ selectedZipPath ? '重新选择文件' : '选择本地 ZIP / LUA 文件' }}</span>
-          </button>
-        </div>
+        <button class="btn btn-primary btn-search" :disabled="searching" @click="handleSearch">
+          <Search v-if="!searching" :size="15" />
+          <RefreshCw v-else :size="15" class="animate-spin" />
+          <span>{{ searching ? '搜索中...' : '搜索' }}</span>
+        </button>
       </div>
 
-      <!-- Action Button -->
-      <div v-if="selectedZipPath" class="import-action-bar glass-panel">
-        <div class="action-info">
-          <FileCode2 v-if="isLuaFile" :size="22" class="text-cyan" />
-          <FileArchive v-else :size="22" class="text-emerald" />
-          <div>
-            <div class="action-name">{{ selectedZipName }}</div>
-            <div class="action-tip font-mono">{{ selectedZipPath }}</div>
-          </div>
+      <!-- Right Action Tools -->
+      <div class="toolbar-right">
+        <!-- Upstream Source Picker -->
+        <div class="source-picker" title="清单下载上游镜像源">
+          <Globe2 :size="13" class="text-cyan flex-shrink-0" />
+          <span class="source-label">清单源:</span>
+          <select v-model="selectedSource" class="source-select" @change="handleChangeSource">
+            <option value="wudrm">WUDRM</option>
+            <option value="opensteamtool">OST</option>
+            <option value="steamrun">SR</option>
+          </select>
         </div>
 
-        <button class="btn btn-success btn-lg" :disabled="importing" @click="handleImportZip">
-          <ArrowRight :size="16" />
-          <span>{{ importing ? '正在解析并入库...' : '一键入库并部署' }}</span>
+        <!-- Local File Import Button -->
+        <button class="btn btn-steam btn-local-import" @click="triggerFileInput" title="选择本地下载清单压缩包 (.zip) 或 Lua 脚本 (.lua)">
+          <FolderOpen :size="15" class="text-cyan" />
+          <span>本地导入文件</span>
         </button>
       </div>
     </div>
 
-    <!-- Mode 2: Online Manifest & Key Download by AppID -->
-    <div v-else-if="activeMode === 'online'" class="tab-content">
-      <!-- Tip Banner -->
-      <div class="tip-banner glass-panel">
-        <Sparkles :size="18" class="text-cyan flex-shrink-0" />
-        <div class="tip-content">
-          <div class="tip-title">输入 AppID 在线下载清单与密钥</div>
-          <div class="tip-desc">
-            输入 Steam 游戏 AppID，软件将自动从云端检索下载包含 <b>.manifest 实体清单</b> 与 <b>解密密钥</b> 的完整包，并一键解压部署至 Steam，直接支持客户端内点击下载。
+    <!-- Local File Import Banner (Appears when local file is selected/dropped) -->
+    <transition name="slide-fade">
+      <div v-if="selectedZipPath" class="local-import-bar glass-card">
+        <div class="local-file-info">
+          <FileCode2 v-if="isLuaFile" :size="24" class="text-cyan flex-shrink-0" />
+          <FileArchive v-else :size="24" class="text-emerald flex-shrink-0" />
+          <div class="local-file-texts">
+            <div class="local-file-name">{{ selectedZipName }}</div>
+            <div class="local-file-path text-dim" :title="selectedZipPath">{{ selectedZipPath }}</div>
           </div>
+        </div>
+        <div class="local-file-actions">
+          <button class="btn btn-ghost btn-sm" @click="selectedZipPath = ''">
+            <X :size="14" />
+            <span>取消</span>
+          </button>
+          <button class="btn btn-success" :disabled="importing" @click="handleImportZip">
+            <ArrowRight :size="15" />
+            <span>{{ importing ? '正在入库并部署...' : '一键导入并部署' }}</span>
+          </button>
         </div>
       </div>
+    </transition>
 
-      <div class="input-card glass-panel">
-        <div class="input-card-header">
-          <label class="input-label">输入 Steam 游戏 AppID：</label>
-          <div class="source-picker">
-            <Globe2 :size="13" class="text-cyan" />
-            <span class="source-picker-label">清单上游源:</span>
-            <select v-model="selectedSource" class="source-select font-mono" @change="handleChangeSource">
-              <option value="wudrm">WUDRM</option>
-              <option value="opensteamtool">OST</option>
-              <option value="steamrun">SR</option>
-            </select>
+    <!-- Category Filter Bar -->
+    <div class="category-tabs">
+      <div class="tabs-left">
+        <button
+          class="cat-tab"
+          :class="{ active: currentCategory === 'popular' && !searchQuery.trim() }"
+          @click="switchToPopular"
+        >
+          <Flame :size="15" class="cat-icon text-amber" />
+          <span>🔥 热门畅销榜</span>
+        </button>
+        <button
+          class="cat-tab"
+          :class="{ active: currentCategory === 'classic' && !searchQuery.trim() }"
+          @click="switchToClassic"
+        >
+          <Sparkles :size="15" class="cat-icon text-cyan" />
+          <span>✨ 推荐精选</span>
+        </button>
+        <button
+          v-if="searchedQuery"
+          class="cat-tab active"
+        >
+          <Search :size="15" class="cat-icon text-purple" />
+          <span>🔍 搜索：“{{ searchedQuery }}” ({{ displayedGames.length }})</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Games Card Grid Area -->
+    <div v-if="searching || loadingPopular" class="loading-state">
+      <RefreshCw :size="32" class="animate-spin text-cyan" />
+      <div class="loading-text">{{ searching ? '正在从 Steam 商店检索匹配游戏...' : '正在同步 Steam 热门榜单...' }}</div>
+    </div>
+
+    <div v-else-if="displayedGames.length > 0" class="games-grid">
+      <div
+        v-for="game in displayedGames"
+        :key="game.id"
+        class="game-card glass-card"
+        @click="openGameDetails(game.id)"
+      >
+        <!-- Header Banner Image -->
+        <div class="game-cover-box">
+          <img
+            :src="game.header_image"
+            class="game-cover-img"
+            :alt="game.name"
+            loading="lazy"
+            @error="onImgError"
+          />
+          <div class="cover-overlay"></div>
+          <div class="game-appid-tag">ID: {{ game.id }}</div>
+          <div v-if="game.price" class="game-price-tag">{{ game.price }}</div>
+
+          <!-- Quick Action Hover Button -->
+          <div class="quick-view-action">
+            <span class="view-pill">
+              <Eye :size="13" />
+              <span>查看详情 / 入库</span>
+            </span>
           </div>
         </div>
 
-        <div class="url-input-row">
-          <input
-            v-model="appidInput"
-            type="text"
-            class="input-text url-input font-mono"
-            placeholder="例如: 1245620 (艾尔登法环) 或 2868840 (杀戮尖塔2)"
-            @keyup.enter="handleDownloadManifestDirect"
-          />
-          <button
-            class="btn btn-success"
-            :disabled="downloadingManifest || !appidInput.trim()"
-            @click="handleDownloadManifestDirect"
-            title="自动从高速清单源下载完整 .manifest 实体文件与密钥并一键入库部署"
-          >
-            <Download :size="15" :class="{ 'animate-spin': downloadingManifest }" />
-            <span>{{ downloadingManifest ? '正在入库...' : '一键入库' }}</span>
-          </button>
+        <!-- Card Bottom Info -->
+        <div class="game-info">
+          <div class="game-title" :title="game.name">{{ game.name }}</div>
+          <div class="game-meta-row">
+            <span class="game-id-text">AppID: {{ game.id }}</span>
+            <span class="btn-detail-link">
+              <span>一键入库</span>
+              <ChevronRight :size="12" />
+            </span>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Mode 3: Custom Lua Script -->
-    <div v-else-if="activeMode === 'custom'" class="tab-content">
-      <div class="custom-card glass-panel">
-        <div class="custom-header">
-          <div class="input-field">
-            <label class="field-label">主游戏 AppID：</label>
-            <input
-              v-model.number="customAppid"
-              type="number"
-              class="input-text font-mono"
-              placeholder="例如: 1245620"
-            />
-          </div>
-          <div class="input-field" style="flex: 2;">
-            <label class="field-label">游戏名称（可选）：</label>
-            <input
-              v-model="customName"
-              type="text"
-              class="input-text"
-              placeholder="例如: Elden Ring"
-            />
-          </div>
-        </div>
+    <!-- Empty Search State -->
+    <div v-else class="empty-state glass-panel">
+      <Gamepad2 :size="48" class="text-dim mb-3" />
+      <h3 class="empty-title">未搜索到相关 Steam 游戏</h3>
+      <p class="empty-desc text-dim">
+        请尝试输入更简短的游戏关键词（如“悟空”代替完整书名号），或直接在上方输入游戏的 <b>Steam AppID 数字编号</b> 进行直达。
+      </p>
+      <button class="btn btn-primary mt-3" @click="switchToPopular">
+        <Flame :size="15" />
+        <span>返回热门榜单</span>
+      </button>
+    </div>
 
-        <div class="custom-editor-area">
-          <div class="lua-editor-header">
-            <span class="editor-title font-mono">自定义 Lua 内容</span>
-            <div class="editor-toolbar">
-              <button class="btn-tool" @click="insertCustom('addappid')">+ addappid</button>
-              <button class="btn-tool" @click="insertCustom('manifest')">+ setManifestid</button>
+    <!-- Game Details Modal (详情与一键入库) -->
+    <transition name="modal-fade">
+      <div v-if="selectedDetails" class="modal-overlay" @click.self="closeDetails">
+        <div class="details-modal glass-card">
+          <!-- Hero Header Image -->
+          <div class="modal-hero">
+            <img
+              :src="selectedDetails.background || selectedDetails.header_image"
+              class="hero-bg-img"
+              :alt="selectedDetails.name"
+              @error="onImgError"
+            />
+            <div class="hero-gradient"></div>
+
+            <button class="close-modal-btn" @click="closeDetails" title="关闭详情">
+              <X :size="18" />
+            </button>
+
+            <!-- Hero Content -->
+            <div class="hero-content">
+              <div class="hero-id-tag">AppID: {{ selectedDetails.appid }}</div>
+              <h2 class="hero-title">{{ selectedDetails.name }}</h2>
+              
+              <!-- Quick Tags in Hero -->
+              <div class="hero-tags">
+                <span v-if="selectedDetails.release_date" class="hero-chip">
+                  <Calendar :size="12" />
+                  <span>发售于 {{ selectedDetails.release_date }}</span>
+                </span>
+                <span v-if="selectedDetails.developers?.length" class="hero-chip">
+                  <User :size="12" />
+                  <span>{{ selectedDetails.developers.join(', ') }}</span>
+                </span>
+                <span v-if="selectedDetails.dlcs?.length" class="hero-chip chip-purple">
+                  <Layers :size="12" />
+                  <span>含 {{ selectedDetails.dlcs.length }} 款官方 DLC</span>
+                </span>
+              </div>
             </div>
           </div>
-          <textarea
-            v-model="customLua"
-            class="code-textarea font-mono"
-            placeholder="addappid(1245620)&#10;setManifestid(1245621, &quot;6005357081270866877&quot;)"
-            spellcheck="false"
-          ></textarea>
-        </div>
 
-        <div class="custom-footer">
-          <button
-            class="btn btn-primary btn-lg"
-            :disabled="!customAppid || !customLua.trim() || savingCustom"
-            @click="handleSaveCustom"
-          >
-            <Save :size="16" />
-            <span>{{ savingCustom ? '保存中...' : '保存并添加入库' }}</span>
-          </button>
+          <!-- Modal Body Content -->
+          <div class="modal-body">
+            <!-- Genres -->
+            <div v-if="selectedDetails.genres?.length" class="genres-row">
+              <span v-for="genre in selectedDetails.genres" :key="genre" class="genre-tag">
+                {{ genre }}
+              </span>
+            </div>
+
+            <!-- Game Description -->
+            <div class="desc-box">
+              <div class="section-title">游戏简介</div>
+              <div class="desc-text">{{ selectedDetails.short_description || '暂无官方中文简介。' }}</div>
+            </div>
+
+            <!-- Upstream Manifest Download Option Card -->
+            <div class="manifest-card">
+              <div class="manifest-card-header">
+                <div class="manifest-title-group">
+                  <div class="manifest-icon-box">
+                    <Cpu :size="16" class="text-cyan" />
+                  </div>
+                  <div>
+                    <div class="manifest-main-title">云端清单与密钥部署</div>
+                    <div class="manifest-sub-desc">自动匹配并下载实体清单，支持 Steam 客户端直接完整下载</div>
+                  </div>
+                </div>
+
+                <div class="source-select-pill">
+                  <span class="source-pill-label">清单源:</span>
+                  <select v-model="selectedSource" class="source-select" @change="handleChangeSource">
+                    <option value="wudrm">WUDRM (推荐)</option>
+                    <option value="opensteamtool">OST</option>
+                    <option value="steamrun">SR</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="manifest-feature-tags">
+                <span class="feature-tag">
+                  <CheckCircle2 :size="12" class="text-emerald" />
+                  <span>实体清单与解密密钥</span>
+                </span>
+                <span class="feature-tag">
+                  <CheckCircle2 :size="12" class="text-emerald" />
+                  <span>全 DLC 自动入库</span>
+                </span>
+                <span class="feature-tag">
+                  <CheckCircle2 :size="12" class="text-emerald" />
+                  <span>客户端直接下载</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Modal Footer Actions -->
+          <div class="modal-footer">
+            <button class="btn btn-ghost" @click="openStoreUrl(selectedDetails.appid)">
+              <ExternalLink :size="15" />
+              <span>在 Steam 商店中查看</span>
+            </button>
+
+            <div class="footer-right">
+              <button class="btn btn-ghost" @click="closeDetails">取消</button>
+              <button
+                class="btn btn-success btn-lg"
+                :disabled="downloadingManifest"
+                @click="handleInstallGame(selectedDetails.appid)"
+              >
+                <Download :size="17" :class="{ 'animate-spin': downloadingManifest }" />
+                <span>{{ downloadingManifest ? '正在入库部署...' : '一键入库并部署' }}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { isTauri } from '../api/tauri';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import {
-  Archive,
-  Code2,
-  UploadCloud,
-  FolderOpen,
-  Sparkles,
-  FileArchive,
-  FileCode2,
-  ArrowRight,
-  CheckCircle2,
-  Save,
+  Search,
   X,
-  Copy,
-  Check,
-  Download,
+  RefreshCw,
   Globe2,
+  FolderOpen,
+  Flame,
+  Sparkles,
+  Gamepad2,
+  Eye,
+  ChevronRight,
+  Calendar,
+  User,
+  Layers,
+  ExternalLink,
+  Download,
+  UploadCloud,
+  FileCode2,
+  FileArchive,
+  ArrowRight,
+  Cpu,
+  CheckCircle2,
 } from 'lucide-vue-next';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import * as api from '../api/tauri';
+import type { SteamSearchResultItem, SteamStoreDetails } from '../types/steam';
 
-const emit = defineEmits<{
-  (e: 'import-zip', zipPath: string): void;
-  (e: 'save-lua', appid: number, content: string): void;
-  (e: 'download-manifest', appid: number): void;
-  (e: 'update-manifest-source', source: string): void;
-}>();
+const DEFAULT_COVER = '/default_cover.svg';
 
 const props = defineProps<{
   importing?: boolean;
@@ -239,31 +343,33 @@ const props = defineProps<{
   initialZipPath?: string;
 }>();
 
-const activeMode = ref<'zip' | 'online' | 'custom'>('zip');
-const isDragging = ref(false);
-const selectedZipPath = ref('');
-const fileInputRef = ref<HTMLInputElement | null>(null);
-const copiedPath = ref(false);
+const emit = defineEmits<{
+  (e: 'import-zip', zipPath: string): void;
+  (e: 'download-manifest', appid: number): void;
+  (e: 'save-lua', appid: number, content: string): void;
+  (e: 'update-manifest-source', source: string): void;
+}>();
 
-const appidInput = ref('');
+// State
+const searchQuery = ref('');
+const searchedQuery = ref('');
+const searching = ref(false);
+const loadingPopular = ref(false);
+const currentCategory = ref<'popular' | 'classic'>('popular');
 const selectedSource = ref('wudrm');
 
-// Custom Lua fields
-const customAppid = ref<number | null>(null);
-const customName = ref('');
-const customLua = ref('');
-const savingCustom = ref(false);
+// Lists
+const popularGames = ref<SteamSearchResultItem[]>([]);
+const classicGames = ref<SteamSearchResultItem[]>([]);
+const searchResults = ref<SteamSearchResultItem[]>([]);
 
-watch(
-  () => props.initialZipPath,
-  (val) => {
-    if (val) {
-      selectedZipPath.value = val;
-      activeMode.value = 'zip';
-    }
-  },
-  { immediate: true }
-);
+// Details Modal State
+const selectedDetails = ref<SteamStoreDetails | null>(null);
+
+// Local Import State
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const selectedZipPath = ref('');
+const isDragging = ref(false);
 
 const isLuaFile = computed(() => {
   return selectedZipPath.value.toLowerCase().endsWith('.lua');
@@ -275,10 +381,170 @@ const selectedZipName = computed(() => {
   return parts[parts.length - 1];
 });
 
+const displayedGames = computed(() => {
+  if (searchedQuery.value.trim() && searchResults.value.length > 0) {
+    return searchResults.value;
+  }
+  if (currentCategory.value === 'classic') {
+    return classicGames.value;
+  }
+  return popularGames.value;
+});
+
+// Curated Classic Fallback Games
+const curatedClassicList: SteamSearchResultItem[] = [
+  { id: 2358720, name: '黑神话：悟空', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/2358720/header.jpg', price: '¥268.00' },
+  { id: 1245620, name: '艾尔登法环 (ELDEN RING)', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/1245620/header.jpg', price: '¥298.00' },
+  { id: 1091500, name: '赛博朋克 2077', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/1091500/header.jpg', price: '¥298.00' },
+  { id: 2868840, name: '杀戮尖塔 2 (Slay the Spire 2)', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/2868840/header.jpg', price: '即将推出' },
+  { id: 1623730, name: '幻兽帕鲁 (Palworld)', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/1623730/header.jpg', price: '¥108.00' },
+  { id: 2246340, name: '怪物猎人：荒野 (Monster Hunter Wilds)', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/2246340/header.jpg', price: '¥368.00' },
+  { id: 730, name: '反恐精英 2 (Counter-Strike 2)', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/730/header.jpg', price: '免费开玩' },
+  { id: 1086940, name: '博德之门 3 (Baldur\'s Gate 3)', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/1086940/header.jpg', price: '¥298.00' },
+  { id: 271590, name: 'Grand Theft Auto V', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/271590/header.jpg', price: '¥138.00' },
+  { id: 1174180, name: '荒野大镖客：救赎 2', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/1174180/header.jpg', price: '¥279.00' },
+  { id: 413150, name: '星露谷物语 (Stardew Valley)', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/413150/header.jpg', price: '¥48.00' },
+  { id: 892970, name: 'Valheim: 英灵神殿', header_image: 'https://cdn.akamai.steamstatic.com/steam/apps/892970/header.jpg', price: '¥70.00' },
+];
+
+const loadPopular = async () => {
+  loadingPopular.value = true;
+  try {
+    const list = await api.getPopularSteamGames();
+    if (list && list.length > 0) {
+      popularGames.value = list;
+    } else {
+      popularGames.value = curatedClassicList;
+    }
+  } catch (err) {
+    console.warn('获取 Steam 热门游戏失败，加载精选列表:', err);
+    popularGames.value = curatedClassicList;
+  } finally {
+    loadingPopular.value = false;
+  }
+};
+
+const handleSearch = async () => {
+  const q = searchQuery.value.trim();
+  if (!q) {
+    searchedQuery.value = '';
+    searchResults.value = [];
+    return;
+  }
+
+  searching.value = true;
+  searchedQuery.value = q;
+  try {
+    const results = await api.searchSteamGames(q);
+    searchResults.value = results;
+  } catch (err) {
+    console.warn('搜索失败:', err);
+    searchResults.value = [];
+  } finally {
+    searching.value = false;
+  }
+};
+
+const clearSearch = () => {
+  searchQuery.value = '';
+  searchedQuery.value = '';
+  searchResults.value = [];
+};
+
+const switchToPopular = () => {
+  clearSearch();
+  currentCategory.value = 'popular';
+};
+
+const switchToClassic = () => {
+  clearSearch();
+  currentCategory.value = 'classic';
+};
+
+const openGameDetails = async (appid: number) => {
+  try {
+    const details = await api.fetchGameFromStoreOrUrl(String(appid));
+    selectedDetails.value = details;
+  } catch (err) {
+    console.error('获取游戏详情失败:', err);
+  }
+};
+
+const closeDetails = () => {
+  selectedDetails.value = null;
+};
+
+const handleInstallGame = (appid: number) => {
+  emit('download-manifest', appid);
+};
+
+const openStoreUrl = (appid: number) => {
+  window.open(`https://store.steampowered.com/app/${appid}`, '_blank');
+};
+
+const onImgError = (event: Event) => {
+  const img = event.target as HTMLImageElement;
+  if (!img) return;
+  img.onerror = null;
+  img.src = DEFAULT_COVER;
+};
+
+const handleChangeSource = async () => {
+  try {
+    await api.setManifestSource(selectedSource.value);
+    emit('update-manifest-source', selectedSource.value);
+  } catch (e) {
+    console.warn('修改清单源失败:', e);
+  }
+};
+
+// Local File Import Logic
+const triggerFileInput = () => {
+  fileInputRef.value?.click();
+};
+
+const handleFileChange = (e: Event) => {
+  const target = e.target as HTMLInputElement;
+  if (target.files && target.files.length > 0) {
+    const file = target.files[0];
+    const path = (file as any).path || file.name;
+    selectedZipPath.value = path;
+  }
+};
+
+const handleNativeDrop = (e: DragEvent) => {
+  isDragging.value = false;
+  if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+    const file = e.dataTransfer.files[0];
+    const path = (file as any).path || file.name;
+    if (path.toLowerCase().endsWith('.zip') || path.toLowerCase().endsWith('.lua')) {
+      selectedZipPath.value = path;
+    }
+  }
+};
+
+const handleImportZip = () => {
+  if (!selectedZipPath.value) return;
+  emit('import-zip', selectedZipPath.value);
+};
+
+watch(
+  () => props.initialZipPath,
+  (val) => {
+    if (val) {
+      selectedZipPath.value = val;
+    }
+  },
+  { immediate: true }
+);
+
 let unlistenDragDrop: (() => void) | null = null;
 
 onMounted(async () => {
-  if (isTauri()) {
+  classicGames.value = curatedClassicList;
+  await loadPopular();
+
+  if (api.isTauri()) {
     try {
       const src = await api.getManifestSource();
       if (src) {
@@ -298,10 +564,11 @@ onMounted(async () => {
           isDragging.value = false;
           const paths = event.payload.paths;
           if (paths && paths.length > 0) {
-            const validPath = paths.find((p) => p.toLowerCase().endsWith('.zip') || p.toLowerCase().endsWith('.lua')) || paths[0];
+            const validPath = paths.find(
+              (p) => p.toLowerCase().endsWith('.zip') || p.toLowerCase().endsWith('.lua')
+            ) || paths[0];
             if (validPath) {
               selectedZipPath.value = validPath;
-              activeMode.value = 'zip';
             }
           }
         }
@@ -318,352 +585,674 @@ onUnmounted(() => {
     unlistenDragDrop = null;
   }
 });
-
-const triggerFileInput = async () => {
-  if (isTauri()) {
-    try {
-      const selected = await openFileDialog({
-        title: '选择清单压缩包 (.zip) 或 Lua 脚本 (.lua)',
-        multiple: false,
-        filters: [
-          {
-            name: '清单压缩包 / Lua 脚本 (*.zip, *.lua)',
-            extensions: ['zip', 'lua'],
-          },
-          {
-            name: 'ZIP 压缩包 (*.zip)',
-            extensions: ['zip'],
-          },
-          {
-            name: 'Lua 脚本 (*.lua)',
-            extensions: ['lua'],
-          },
-        ],
-      });
-      if (selected && typeof selected === 'string') {
-        selectedZipPath.value = selected;
-      }
-      return;
-    } catch (err) {
-      console.warn('Tauri open dialog error, falling back to input:', err);
-    }
-  }
-  fileInputRef.value?.click();
-};
-
-const handleFileChange = (e: Event) => {
-  const target = e.target as HTMLInputElement;
-  if (target.files && target.files.length > 0) {
-    const file = target.files[0];
-    const p = (file as any).path || file.name;
-    selectedZipPath.value = p;
-  }
-};
-
-const handleDrop = (e: DragEvent) => {
-  isDragging.value = false;
-  if (e.dataTransfer && e.dataTransfer.files.length > 0) {
-    const file = e.dataTransfer.files[0];
-    const p = (file as any).path || file.name;
-    if (p) {
-      selectedZipPath.value = p;
-    }
-  }
-};
-
-const clearSelectedZip = () => {
-  selectedZipPath.value = '';
-  if (fileInputRef.value) {
-    fileInputRef.value.value = '';
-  }
-};
-
-const copyPath = async () => {
-  if (selectedZipPath.value) {
-    try {
-      await navigator.clipboard.writeText(selectedZipPath.value);
-      copiedPath.value = true;
-      setTimeout(() => {
-        copiedPath.value = false;
-      }, 2000);
-    } catch (e) {
-      console.error('Failed to copy path:', e);
-    }
-  }
-};
-
-const handleImportZip = () => {
-  if (selectedZipPath.value) {
-    emit('import-zip', selectedZipPath.value);
-  }
-};
-
-const extractAppId = (input: string): number | null => {
-  const trimmed = input.trim();
-  if (/^\d+$/.test(trimmed)) return parseInt(trimmed, 10);
-  const match = trimmed.match(/\/app\/(\d+)/);
-  if (match) return parseInt(match[1], 10);
-  const digits = trimmed.match(/\b\d{4,8}\b/);
-  return digits ? parseInt(digits[0], 10) : null;
-};
-
-const handleChangeSource = async () => {
-  try {
-    await api.setManifestSource(selectedSource.value);
-    emit('update-manifest-source', selectedSource.value);
-  } catch (e) {
-    console.error('Failed to set manifest source:', e);
-  }
-};
-
-const handleDownloadManifestDirect = () => {
-  if (!appidInput.value.trim() || props.downloadingManifest) return;
-  const appid = extractAppId(appidInput.value);
-  if (appid) {
-    emit('download-manifest', appid);
-  }
-};
-
-const insertCustom = (type: 'addappid' | 'manifest') => {
-  const id = customAppid.value || 123456;
-  if (type === 'addappid') {
-    customLua.value += `\naddappid(${id})`;
-  } else if (type === 'manifest') {
-    customLua.value += `\nsetManifestid(${id}, "0000000000000000000")`;
-  }
-};
-
-const handleSaveCustom = () => {
-  if (customAppid.value && customLua.value.trim()) {
-    let script = customLua.value.trim();
-    if (customName.value.trim() && !script.includes('-- Name:')) {
-      script = `-- Name: ${customName.value.trim()}\n-- AppID: ${customAppid.value}\n\n` + script;
-    }
-    emit('save-lua', customAppid.value, script);
-  }
-};
 </script>
 
 <style scoped>
 .add-container {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   padding: 10px 14px;
   height: calc(100vh - 48px);
   overflow-y: auto;
+  position: relative;
 }
 
-/* Mode Tabs */
-.mode-tabs {
+/* Drag overlay */
+.drag-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 999;
+  background: rgba(13, 18, 28, 0.88);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
-  padding: 3px;
-  gap: 4px;
-  background: rgba(13, 18, 28, 0.7);
+  justify-content: center;
+  border: 2px dashed var(--accent-cyan);
   border-radius: var(--radius-sm);
 }
 
-.mode-tab-btn {
+.drag-box {
+  padding: 30px 48px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.drag-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  gap: 12px;
+  border-radius: var(--radius-sm);
+}
+
+.search-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 580px;
+}
+
+.search-input-box {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid transparent;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.search-input {
+  width: 100%;
+  padding: 7px 32px 7px 32px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.mode-tab-btn:hover {
-  color: var(--text-main);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.mode-tab-btn.active {
   color: #ffffff;
-  background: linear-gradient(135deg, rgba(0, 242, 255, 0.15) 0%, rgba(26, 159, 255, 0.2) 100%);
-  border-color: rgba(0, 242, 255, 0.3);
-  box-shadow: 0 0 12px rgba(0, 242, 255, 0.15);
-}
-
-.tab-content {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Drop Zone */
-.drop-zone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 30px 16px;
-  border: 2px dashed rgba(0, 242, 255, 0.25);
-  border-radius: var(--radius-lg);
-  text-align: center;
-  gap: 8px;
-  cursor: pointer;
-  background: rgba(13, 18, 28, 0.5);
-  transition: all 0.3s ease;
-}
-
-.drop-zone:hover,
-.drop-zone.dragging {
-  border-color: var(--accent-cyan);
-  background: rgba(0, 242, 255, 0.06);
-  box-shadow: 0 0 20px rgba(0, 242, 255, 0.15);
-}
-
-.drop-zone.has-file {
-  border-color: rgba(16, 185, 129, 0.4);
-  background: rgba(16, 185, 129, 0.04);
-}
-
-.drop-icon-box {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: rgba(0, 242, 255, 0.1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 2px;
-  transition: all 0.3s ease;
-}
-
-.drop-icon-box.icon-active {
-  background: rgba(16, 185, 129, 0.15);
-  box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);
-}
-
-.drop-title {
   font-size: 13px;
-  font-weight: 700;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.search-input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 242, 255, 0.2);
+}
+
+.clear-btn {
+  position: absolute;
+  right: 8px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+.clear-btn:hover {
   color: #ffffff;
 }
 
-.drop-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  max-width: 480px;
-}
-
-.selected-file-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 90%;
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  color: #a7f3d0;
-  font-size: 11px;
-  margin-top: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.path-text {
-  max-width: 520px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.btn-search {
+  padding: 7px 16px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
-.badge-action-btn {
-  background: rgba(255, 255, 255, 0.1);
-  border: none;
-  color: #a7f3d0;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  padding: 0;
-  flex-shrink: 0;
-}
-
-.badge-action-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
-  color: #ffffff;
-}
-
-.drop-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-/* Import Action Bar */
-.import-action-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-}
-
-.action-info {
+.toolbar-right {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.action-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.action-tip {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.btn-lg {
-  padding: 8px 16px;
-  font-size: 12px;
-}
-
-/* Mode 2: URL Input */
-.input-card {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 20px;
-}
-
-.input-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .source-picker {
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(15, 23, 42, 0.7);
-  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 4px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-subtle);
+  font-size: 12px;
 }
 
-.source-picker-label {
+.source-label {
+  color: var(--text-dim);
   font-size: 11px;
+}
+
+.source-select {
+  background: transparent;
+  border: none;
+  color: var(--accent-cyan);
+  font-weight: 700;
+  font-size: 11.5px;
+  outline: none;
+  cursor: pointer;
+}
+
+.source-select option {
+  background: #111726;
+  color: #ffffff;
+}
+
+.btn-local-import {
+  white-space: nowrap;
+  font-size: 12.5px;
+  padding: 6px 12px;
+  background: rgba(0, 242, 255, 0.08);
+  border-color: rgba(0, 242, 255, 0.3);
+}
+.btn-local-import:hover {
+  background: rgba(0, 242, 255, 0.18);
+  border-color: var(--accent-cyan);
+}
+
+/* Local import bar */
+.local-import-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: var(--radius-sm);
+  gap: 12px;
+}
+
+.local-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.local-file-texts {
+  overflow: hidden;
+}
+
+.local-file-name {
+  font-weight: 700;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.local-file-path {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.local-file-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Category tabs */
+.category-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+}
+
+.tabs-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cat-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cat-tab:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.cat-tab.active {
+  background: rgba(0, 242, 255, 0.12);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+}
+
+/* Loading state */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  gap: 12px;
+}
+
+.loading-text {
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+
+/* Games Grid */
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  padding-bottom: 20px;
+}
+
+.game-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: #111726;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.2s, box-shadow 0.2s;
+}
+
+.game-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(0, 242, 255, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 0 16px rgba(0, 242, 255, 0.15);
+}
+
+.game-cover-box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 460 / 215;
+  background: #090d15;
+  overflow: hidden;
+}
+
+.game-cover-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease;
+  font-size: 0;
+}
+
+.game-card:hover .game-cover-img {
+  transform: scale(1.06);
+}
+
+.cover-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, rgba(17, 23, 38, 0.92) 100%);
+}
+
+.game-appid-tag {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.game-price-tag {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(16, 185, 129, 0.85);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.quick-view-action {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: all 0.2s;
+}
+
+.game-card:hover .quick-view-action {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.view-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 242, 255, 0.9);
+  color: #0d121c;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  box-shadow: 0 2px 10px rgba(0, 242, 255, 0.5);
+}
+
+.game-info {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.game-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f1f5f9;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+
+.game-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.game-id-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  letter-spacing: 0.01em;
+}
+
+.btn-detail-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  background: rgba(0, 242, 255, 0.08);
+  border: 1px solid rgba(0, 242, 255, 0.22);
+  padding: 2px 7px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.game-card:hover .btn-detail-link {
+  background: rgba(0, 242, 255, 0.2);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 50px 20px;
+  text-align: center;
+  margin-top: 10px;
+}
+
+.empty-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+.empty-desc {
+  font-size: 12.5px;
+  max-width: 480px;
+  line-height: 1.6;
+}
+
+/* Details Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.details-modal {
+  width: 100%;
+  max-width: 680px;
+  background: #111726;
+  border: 1px solid rgba(0, 242, 255, 0.3);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(0, 242, 255, 0.15);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+.modal-hero {
+  position: relative;
+  width: 100%;
+  height: 220px;
+  overflow: hidden;
+  background: #090d15;
+}
+
+.hero-bg-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hero-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(17, 23, 38, 0.95) 90%, #111726 100%);
+}
+
+.close-modal-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 10;
+}
+.close-modal-btn:hover {
+  background: rgba(239, 68, 68, 0.8);
+  border-color: #ef4444;
+}
+
+.hero-content {
+  position: absolute;
+  bottom: 12px;
+  left: 18px;
+  right: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hero-id-tag {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+.hero-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.2;
+}
+
+.hero-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #ffffff;
+}
+
+.chip-purple {
+  background: rgba(168, 85, 247, 0.25);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #e9d5ff;
+}
+
+.modal-body {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.genres-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.genre-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 242, 255, 0.1);
+  border: 1px solid rgba(0, 242, 255, 0.25);
+  color: var(--accent-cyan);
+  font-weight: 500;
+}
+
+.desc-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.desc-text {
+  font-size: 13px;
+  color: #e2e8f0;
+  line-height: 1.6;
+}
+
+.manifest-card {
+  background: rgba(17, 24, 39, 0.6);
+  border: 1px solid rgba(0, 242, 255, 0.16);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.manifest-card:hover {
+  border-color: rgba(0, 242, 255, 0.32);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.manifest-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manifest-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.manifest-icon-box {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(0, 242, 255, 0.1);
+  border: 1px solid rgba(0, 242, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.manifest-main-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.manifest-sub-desc {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+
+.source-select-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 3px 8px;
+  flex-shrink: 0;
+}
+
+.source-pill-label {
+  font-size: 11.5px;
   color: var(--text-dim);
 }
 
@@ -671,148 +1260,71 @@ const handleSaveCustom = () => {
   background: transparent;
   border: none;
   color: var(--accent-cyan);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   outline: none;
   cursor: pointer;
-  font-family: inherit;
 }
+
 .source-select option {
-  background: #0f172a;
+  background: #111726;
   color: #ffffff;
 }
 
-.input-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.url-input-row {
+.manifest-feature-tags {
   display: flex;
-  gap: 12px;
-}
-
-.url-input {
-  flex: 1;
-}
-
-/* Custom Mode */
-.custom-card {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.custom-header {
-  display: flex;
-  gap: 16px;
-}
-
-.input-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-}
-
-.field-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.custom-editor-area {
-  display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.lua-editor-header {
+.feature-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.modal-footer {
+  padding: 12px 18px;
+  background: rgba(0, 0, 0, 0.25);
+  border-top: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.editor-title {
-  font-size: 12px;
-  color: var(--accent-cyan);
-  font-weight: 600;
-}
-
-.code-textarea {
-  width: 100%;
-  height: 220px;
-  background: #090d15;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 12px;
-  color: #38bdf8;
-  font-size: 12px;
-  line-height: 1.6;
-  resize: vertical;
-  outline: none;
-}
-
-.code-textarea:focus {
-  border-color: var(--accent-cyan);
-}
-
-.editor-toolbar {
+.footer-right {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 10px;
 }
 
-.btn-tool {
-  padding: 3px 8px;
-  font-size: 11px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-muted);
-  border-radius: 4px;
-  cursor: pointer;
+/* Transitions */
+.slide-fade-enter-active,
+.slide-fade-leave-active {
+  transition: all 0.25s ease;
 }
-.btn-tool:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.12);
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateY(-10px);
+  opacity: 0;
 }
 
-.custom-footer {
-  display: flex;
-  justify-content: flex-end;
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: all 0.25s ease;
 }
-
-/* Tip Banner */
-.tip-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 14px 18px;
-  background: rgba(0, 242, 255, 0.04);
-  border: 1px solid rgba(0, 242, 255, 0.2);
-  border-radius: var(--radius-lg);
-}
-
-.tip-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.tip-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--accent-cyan);
-}
-
-.tip-desc {
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-.tip-desc b {
-  color: #ffffff;
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
 }
 </style>

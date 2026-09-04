@@ -135,7 +135,7 @@
             @error="onImageError($event, game.appid)"
           />
           <div class="cover-gradient"></div>
-          <div class="game-appid-tag font-mono">ID: {{ game.appid }}</div>
+          <div class="game-appid-tag">ID: {{ game.appid }}</div>
           
           <!-- Launch Quick Overlay Button -->
           <button
@@ -215,9 +215,9 @@
           <tr>
             <th style="width: 80px;">封面</th>
             <th>游戏名称</th>
-            <th style="width: 110px;">AppID</th>
-            <th style="width: 140px;">扩展 / 清单</th>
-            <th style="width: 150px;">更新时间</th>
+            <th style="width: 100px;">AppID</th>
+            <th style="width: 220px; white-space: nowrap;">扩展 / 清单</th>
+            <th style="width: 150px; white-space: nowrap;">更新时间</th>
             <th style="width: 180px; text-align: right;">操作</th>
           </tr>
         </thead>
@@ -242,7 +242,7 @@
               </div>
             </td>
             <td>
-              <span class="font-mono table-appid">{{ game.appid }}</span>
+              <span class="table-appid">{{ game.appid }}</span>
             </td>
             <td>
               <div class="table-tags">
@@ -901,9 +901,16 @@ watch(
 }
 
 .table-tags {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
+
+.table-tags .badge {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .table-actions {

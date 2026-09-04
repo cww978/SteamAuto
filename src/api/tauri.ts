@@ -5,6 +5,7 @@ import type {
   GameItem,
   ZipImportResult,
   SteamStoreDetails,
+  SteamSearchResultItem,
   SteamAccount,
 } from '../types/steam';
 
@@ -65,6 +66,14 @@ export async function fetchGameFromStoreOrUrl(
 
 export async function crawlSteamCover(appid: number): Promise<string> {
   return invoke<string>('crawl_steam_cover', { appid });
+}
+
+export async function searchSteamGames(query: string): Promise<SteamSearchResultItem[]> {
+  return invoke<SteamSearchResultItem[]>('search_steam_games', { query });
+}
+
+export async function getPopularSteamGames(): Promise<SteamSearchResultItem[]> {
+  return invoke<SteamSearchResultItem[]>('get_popular_steam_games');
 }
 
 

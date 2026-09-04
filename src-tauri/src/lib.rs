@@ -21,6 +21,8 @@ pub fn run() {
             fetch_game_from_store_or_url,
             get_game_cache,
             crawl_steam_cover,
+            search_steam_games,
+            get_popular_steam_games,
             get_accounts,
             switch_account,
             logout_account,

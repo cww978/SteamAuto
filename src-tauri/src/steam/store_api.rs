@@ -256,3 +256,154 @@ pub async fn crawl_steam_cover(appid: u32) -> Result<String, String> {
     Ok(header.to_string())
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SteamSearchResultItem {
+    pub id: u32,
+    pub name: String,
+    pub header_image: String,
+    pub price: Option<String>,
+}
+
+pub async fn search_steam_store(query: &str) -> Result<Vec<SteamSearchResultItem>, String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get("https://store.steampowered.com/api/storesearch/")
+        .query(&[("term", trimmed), ("l", "schinese"), ("cc", "cn")])
+        .send()
+        .await
+        .map_err(|e| format!("搜索 Steam 游戏失败: {}", e))?;
+
+    let json: serde_json::Value = resp.json().await.map_err(|e| format!("解析搜索结果失败: {}", e))?;
+
+    let mut results = Vec::new();
+    if let Some(items) = json.get("items").and_then(|v| v.as_array()) {
+        for item in items {
+            if let Some(id) = item.get("id").and_then(|v| v.as_u64()).map(|v| v as u32) {
+                let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("未知游戏").to_string();
+                let header_image = format!("https://cdn.akamai.steamstatic.com/steam/apps/{}/header.jpg", id);
+                let price = item.get("price").and_then(|p| p.get("final")).and_then(|f| f.as_i64()).map(|cents| {
+                    if cents == 0 {
+                        "免费开玩".to_string()
+                    } else {
+                        format!("¥{:.2}", (cents as f64) / 100.0)
+                    }
+                });
+
+                results.push(SteamSearchResultItem {
+                    id,
+                    name,
+                    header_image,
+                    price,
+                });
+            }
+        }
+    }
+
+    // If searching a direct numeric AppID and storesearch didn't return it
+    if results.is_empty() {
+        if let Ok(id) = trimmed.parse::<u32>() {
+            if let Ok(details) = fetch_steam_app_details(id).await {
+                results.push(SteamSearchResultItem {
+                    id,
+                    name: details.name,
+                    header_image: details.header_image,
+                    price: None,
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
+
+pub async fn get_featured_popular_games() -> Result<Vec<SteamSearchResultItem>, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(6))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::new();
+    let mut seen_ids = std::collections::HashSet::new();
+
+    if let Ok(resp) = client
+        .get("https://store.steampowered.com/api/featuredcategories?cc=cn&l=schinese")
+        .send()
+        .await
+    {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            // Collect from top_sellers
+            if let Some(items) = json.get("top_sellers").and_then(|c| c.get("items")).and_then(|i| i.as_array()) {
+                for item in items {
+                    if let Some(id) = item.get("id").and_then(|v| v.as_u64()).map(|v| v as u32) {
+                        if seen_ids.insert(id) {
+                            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("未知游戏").to_string();
+                            let header = item.get("header_image").and_then(|v| v.as_str()).map(|s| s.to_string())
+                                .unwrap_or_else(|| format!("https://cdn.akamai.steamstatic.com/steam/apps/{}/header.jpg", id));
+                            let price = item.get("final_price").and_then(|f| f.as_i64()).map(|cents| {
+                                if cents == 0 { "免费开玩".to_string() } else { format!("¥{:.2}", (cents as f64) / 100.0) }
+                            });
+                            results.push(SteamSearchResultItem { id, name, header_image: header, price });
+                        }
+                    }
+                }
+            }
+            // Also collect from specials
+            if let Some(items) = json.get("specials").and_then(|c| c.get("items")).and_then(|i| i.as_array()) {
+                for item in items {
+                    if let Some(id) = item.get("id").and_then(|v| v.as_u64()).map(|v| v as u32) {
+                        if seen_ids.insert(id) {
+                            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("未知游戏").to_string();
+                            let header = item.get("header_image").and_then(|v| v.as_str()).map(|s| s.to_string())
+                                .unwrap_or_else(|| format!("https://cdn.akamai.steamstatic.com/steam/apps/{}/header.jpg", id));
+                            let price = item.get("final_price").and_then(|f| f.as_i64()).map(|cents| {
+                                if cents == 0 { "免费开玩".to_string() } else { format!("¥{:.2}", (cents as f64) / 100.0) }
+                            });
+                            results.push(SteamSearchResultItem { id, name, header_image: header, price });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If online list is empty or sparse, supplement with curated top hits
+    if results.len() < 8 {
+        let curated = [
+            (2358720, "黑神话：悟空"),
+            (1245620, "艾尔登法环"),
+            (1091500, "赛博朋克 2077"),
+            (2868840, "杀戮尖塔 2"),
+            (1623730, "幻兽帕鲁"),
+            (2246340, "怪物猎人：荒野"),
+            (730, "反恐精英 2"),
+            (1086940, "博德之门 3"),
+            (271590, "侠盗猎车手 5"),
+            (1174180, "荒野大镖客：救赎 2"),
+            (413150, "星露谷物语"),
+            (892970, "英灵神殿"),
+        ];
+
+        for (id, name) in curated {
+            if seen_ids.insert(id) {
+                results.push(SteamSearchResultItem {
+                    id,
+                    name: name.to_string(),
+                    header_image: format!("https://cdn.akamai.steamstatic.com/steam/apps/{}/header.jpg", id),
+                    price: None,
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
+

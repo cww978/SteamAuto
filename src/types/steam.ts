@@ -53,6 +53,13 @@ export interface SteamStoreDetails {
   is_official?: boolean;
 }
 
+export interface SteamSearchResultItem {
+  id: number;
+  name: string;
+  header_image: string;
+  price?: string | null;
+}
+
 export interface SteamAccount {
   steam_id64: string;
   account_name: string;

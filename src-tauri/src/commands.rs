@@ -90,6 +90,16 @@ pub async fn crawl_steam_cover(appid: u32) -> Result<String, String> {
     store_api::crawl_steam_cover(appid).await
 }
 
+#[tauri::command]
+pub async fn search_steam_games(query: String) -> Result<Vec<store_api::SteamSearchResultItem>, String> {
+    store_api::search_steam_store(&query).await
+}
+
+#[tauri::command]
+pub async fn get_popular_steam_games() -> Result<Vec<store_api::SteamSearchResultItem>, String> {
+    store_api::get_featured_popular_games().await
+}
+
 
 #[tauri::command]
 pub fn get_accounts(custom_path: Option<String>) -> Result<Vec<SteamAccount>, String> {
