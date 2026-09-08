@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 215" width="460" height="215">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090d16" />
+      <stop offset="50%" stop-color="#0f1726" />
+      <stop offset="100%" stop-color="#141f33" />
+    </linearGradient>
+
+    <!-- Cyan to Blue Accent Gradient -->
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f2ff" />
+      <stop offset="100%" stop-color="#3b82f6" />
+    </linearGradient>
+
+    <!-- Subtle Ambient Glow -->
+    <radialGradient id="centerGlow" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#00f2ff" stop-opacity="0.14" />
+      <stop offset="50%" stop-color="#3b82f6" stop-opacity="0.04" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Cyber Grid Pattern -->
+    <pattern id="cyberGrid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(255, 255, 255, 0.025)" stroke-width="1" />
+    </pattern>
+  </defs>
+
+  <!-- Background Layer -->
+  <rect width="460" height="215" fill="url(#bgGrad)" />
+
+  <!-- Grid Layer -->
+  <rect width="460" height="215" fill="url(#cyberGrid)" />
+
+  <!-- Ambient Glow -->
+  <rect width="460" height="215" fill="url(#centerGlow)" />
+
+  <!-- Diagonal Cyber Highlights -->
+  <path d="M 0 0 L 140 0 L 90 215 L 0 215 Z" fill="rgba(255, 255, 255, 0.008)" />
+  <path d="M 320 0 L 460 0 L 460 215 L 370 215 Z" fill="rgba(0, 242, 255, 0.012)" />
+
+  <!-- Tech Corner Accents -->
+  <path d="M 20 16 L 14 16 L 14 22" stroke="#00f2ff" stroke-width="1.5" stroke-opacity="0.4" fill="none" />
+  <path d="M 440 16 L 446 16 L 446 22" stroke="#00f2ff" stroke-width="1.5" stroke-opacity="0.4" fill="none" />
+  <path d="M 20 199 L 14 199 L 14 193" stroke="#00f2ff" stroke-width="1.5" stroke-opacity="0.4" fill="none" />
+  <path d="M 440 199 L 446 199 L 446 193" stroke="#00f2ff" stroke-width="1.5" stroke-opacity="0.4" fill="none" />
+
+  <!-- Center Artwork -->
+  <g transform="translate(230, 86)">
+    <!-- Back Glow Circle -->
+    <circle r="46" fill="#00f2ff" fill-opacity="0.05" />
+    <circle r="38" fill="#101827" stroke="rgba(0, 242, 255, 0.22)" stroke-width="1.5" />
+
+    <!-- Modern Gamepad Controller Icon -->
+    <g transform="translate(-24, -18)">
+      <!-- Controller Body Silhouette -->
+      <path
+        d="M 10 7 C 14 6, 34 6, 38 7 C 43 8, 48 18, 45 28 C 43 35, 38 36, 34 32 L 31 29 C 29 27, 19 27, 17 29 L 14 32 C 10 36, 5 35, 3 28 C 0 18, 5 8, 10 7 Z"
+        fill="rgba(0, 242, 255, 0.08)"
+        stroke="url(#cyanGrad)"
+        stroke-width="1.8"
+        stroke-linejoin="round"
+      />
+
+      <!-- D-Pad -->
+      <path
+        d="M 13 14 L 17 14 M 15 12 L 15 16"
+        stroke="#00f2ff"
+        stroke-width="2"
+        stroke-linecap="round"
+      />
+
+      <!-- Action Buttons -->
+      <circle cx="33" cy="12" r="1.3" fill="#00f2ff" />
+      <circle cx="36" cy="14" r="1.3" fill="#38bdf8" />
+      <circle cx="30" cy="14" r="1.3" fill="#38bdf8" />
+      <circle cx="33" cy="16" r="1.3" fill="#00f2ff" />
+
+      <!-- Thumbsticks -->
+      <circle cx="19" cy="21" r="2.5" fill="none" stroke="rgba(255, 255, 255, 0.4)" stroke-width="1.2" />
+      <circle cx="29" cy="21" r="2.5" fill="none" stroke="rgba(255, 255, 255, 0.4)" stroke-width="1.2" />
+
+      <!-- Center Status Dot -->
+      <circle cx="24" cy="13" r="1" fill="#00f2ff" />
+    </g>
+  </g>
+
+  <!-- Title Badge Pill -->
+  <g transform="translate(230, 154)">
+    <rect x="-70" y="-12" width="140" height="24" rx="12" fill="rgba(11, 17, 29, 0.85)" stroke="rgba(0, 242, 255, 0.2)" stroke-width="1" />
+    <text
+      x="0"
+      y="4.5"
+      fill="#94a3b8"
+      font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+      font-size="10"
+      font-weight="600"
+      letter-spacing="1.5"
+      text-anchor="middle"
+    >STEAM GAME</text>
+  </g>
+</svg>
