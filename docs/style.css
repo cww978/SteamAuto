@@ -180,11 +180,45 @@ body {
   color: var(--text-primary);
 }
 
-.brand-logo {
+.logo-box {
+  position: relative;
   width: 36px;
   height: 36px;
   border-radius: var(--radius-sm);
-  filter: drop-shadow(0 0 10px var(--accent-cyan-glow));
+  background: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 12px rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.brand-link:hover .logo-box {
+  transform: scale(1.04);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4), 0 0 16px rgba(255, 255, 255, 0.35);
+}
+
+.logo-box-sm {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 4px;
+  display: block;
+}
+
+.logo-box-sm .brand-logo {
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
 }
 
 .brand-name {
